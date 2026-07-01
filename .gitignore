@@ -1,0 +1,43 @@
+# ── Secrets & generated certificates (NEVER commit) ────────────────
+# The local CA private key and leaf certs are generated per-machine at
+# first run by server/make_cert.py. They must never be published.
+*.key
+*.pem
+*.cer
+*.crt
+*.pfx
+relay_key.txt
+server/ca.key
+server/ca.pem
+server/cert.pem
+server/key.pem
+server/phonecam-ca.cer
+
+# ── Python virtual environment ─────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Build artifacts ────────────────────────────────────────────────
+# Portable edition ships its own embedded Python (~600 MB) + a copy of
+# the app. It is a release asset, not source — build it locally.
+PhoneCam-Portable/
+PhoneCam-Portable.zip
+*.zip
+
+# Compiled launcher (rebuild from Launcher.cs)
+*.exe
+*.obj
+*.pdb
+
+# ── Third-party (downloaded on demand by install_unitycapture.ps1) ─
+UnityCapture/
+
+# ── Editor / local config ──────────────────────────────────────────
+.claude/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

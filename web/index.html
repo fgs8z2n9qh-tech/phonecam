@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<!-- PWA: "Add to Home Screen" -> full screen without the Safari frame, more stable wake-lock -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PhoneCam">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>PhoneCam</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#222b36; --txt:#e6edf3; --muted:#8b97a6;
+    --accent:#3fb950; --accent2:#2ea043; --bad:#f85149; --warn:#d29922;
+    --glass:rgba(16,20,26,.62); --glass-line:rgba(255,255,255,.10);
+    --chip:rgba(255,255,255,.07); --chip-on:rgba(63,185,80,.18);
+    --shadow:0 8px 30px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  html,body{margin:0;height:100%;overflow:hidden;color:var(--txt);
+    background:radial-gradient(135% 95% at 50% -12%, #1b2231 0%, #0d1117 56%, #07090d 100%);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  #preview{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:transparent;z-index:0;touch-action:none}
+  #preview.mirror{transform:scaleX(-1)}
+  #preview.rot180{transform:rotate(180deg)}
+  #preview.mirror.rot180{transform:scaleX(-1) rotate(180deg)}
+  #src{display:none}
+  /* tap-to-focus ring */
+  .focusring{position:fixed;width:74px;height:74px;margin:-37px 0 0 -37px;border-radius:50%;
+    border:2px solid var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,.4);z-index:25;pointer-events:none;
+    opacity:0;transform:scale(1.4);transition:none}
+  .focusring.show{animation:focuspop .6s ease-out}
+  @keyframes focuspop{0%{opacity:1;transform:scale(1.4)}60%{opacity:1;transform:scale(.92)}100%{opacity:0;transform:scale(.92)}}
+
+  .ui{position:fixed;inset:0;z-index:30;pointer-events:none}
+  .ui>*{pointer-events:auto}
+
+  .topbar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;
+    padding:calc(env(safe-area-inset-top,8px) + 8px) 14px 8px;transition:opacity .35s}
+  .pill{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
+    background:rgba(0,0,0,.5);backdrop-filter:blur(8px);border:1px solid var(--glass-line);
+    padding:6px 11px;border-radius:999px;color:#cdd7e1}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);transition:.3s}
+  .dot.live{background:var(--accent);box-shadow:0 0 0 4px rgba(63,185,80,.18)}
+  .dot.bad{background:var(--bad)} .dot.wait{background:var(--warn)}
+  .topright{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .statbadge{font:600 11px/1.35 ui-monospace,Menlo,monospace;text-align:right;
+    background:rgba(0,0,0,.5);backdrop-filter:blur(8px);border:1px solid var(--glass-line);
+    border-radius:10px;padding:5px 9px;color:#cdd7e1}
+  .iconbtn{display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex:0 0 auto;
+    border-radius:50%;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);
+    border:1px solid var(--glass-line);color:#cdd7e1}
+  .iconbtn:active{transform:scale(.94)}
+  .iconbtn svg{width:18px;height:18px}
+  .iconbtn[hidden]{display:none}            /* otherwise display:flex would override hidden */
+
+  .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    padding:24px;pointer-events:none}
+  .hint[hidden]{display:none}
+  .hint-card{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;
+    margin-bottom:90px;max-width:300px;padding:28px 26px;border-radius:22px;
+    background:var(--glass);backdrop-filter:blur(16px) saturate(140%);
+    border:1px solid var(--glass-line);box-shadow:var(--shadow)}
+  .hint-ic{width:66px;height:66px;border-radius:20px;display:flex;align-items:center;justify-content:center;
+    background:rgba(63,185,80,.13);border:1px solid rgba(63,185,80,.32);color:var(--accent)}
+  .hint-ic svg{width:34px;height:34px}
+  .hint-t{font-size:17px;font-weight:700;color:var(--txt);letter-spacing:.2px}
+  .hint-s{font-size:13px;line-height:1.55;color:var(--muted)}
+  .hint-s b{color:var(--txt)}
+
+  /* ALWAYS-VISIBLE bottom dock: lens pills + Start + More (frequently used stuff stays fixed) */
+  .botdock{position:absolute;left:0;right:0;bottom:0;z-index:31;display:flex;flex-direction:column;gap:8px;
+    padding:8px 12px calc(env(safe-area-inset-bottom,10px) + 8px);
+    background:linear-gradient(to top, rgba(7,9,13,.82), rgba(7,9,13,0))}
+  .botrow{display:flex;gap:8px;align-items:stretch}
+  .botrow .start{flex:1;margin:0}
+  .morebtn{flex:0 0 auto;width:48px;border-radius:14px}
+  .morebtn.on{background:var(--chip-on);border-color:var(--accent);color:var(--accent)}
+
+  /* ALWAYS-VISIBLE vertical zoom on the right edge.
+     CUSTOM touch slider (div track + thumb, driven by Pointer Events). A native <input range>
+     rotated -90deg is hit-tested against its UN-rotated horizontal box on iOS -> the finger maps
+     to the wrong axis -> jumpy/jittery dragging. A plain div tracks the finger 1:1, no glitches. */
+  .zoomdock{position:absolute;right:calc(env(safe-area-inset-right,0px) + 8px);top:46%;
+    transform:translateY(-50%);z-index:31;display:flex;flex-direction:column;align-items:center;gap:8px;
+    padding:10px 6px;border-radius:999px;background:rgba(0,0,0,.40);backdrop-filter:blur(10px);
+    border:1px solid var(--glass-line);touch-action:none}
+  .zchip{font:700 12px/1 ui-monospace,Menlo,monospace;color:#fff;min-width:36px;text-align:center}
+  .vztrack{position:relative;height:42vh;max-height:300px;width:44px;border-radius:999px;
+    touch-action:none;cursor:pointer;background:rgba(255,255,255,.10);overflow:hidden}
+  .vzfill{position:absolute;left:0;right:0;bottom:0;height:var(--zp,0%);
+    background:linear-gradient(180deg,rgba(63,185,80,0),rgba(63,185,80,.35));pointer-events:none}
+  .vzthumb{position:absolute;left:50%;width:30px;height:30px;border-radius:50%;background:#fff;
+    box-shadow:0 2px 8px rgba(0,0,0,.5);transform:translate(-50%,50%);bottom:var(--zp,0%);
+    pointer-events:none;transition:box-shadow .15s}
+  .vztrack.drag .vzthumb{box-shadow:0 0 0 6px rgba(63,185,80,.25),0 2px 8px rgba(0,0,0,.5)}
+  .vztick{position:absolute;left:50%;width:12px;height:2px;background:rgba(255,255,255,.45);
+    transform:translate(-50%,50%);bottom:var(--t,0%);pointer-events:none}
+  .vzoom-native{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+  /* COLLAPSIBLE overlay sheet (the rest) — opened with the More button, hidden by default */
+  .sheet{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:8px;z-index:33;
+    padding:4px 12px calc(env(safe-area-inset-bottom,10px) + 8px);
+    background:var(--glass);backdrop-filter:blur(22px) saturate(140%);
+    border-top:1px solid var(--glass-line);border-radius:22px 22px 0 0;box-shadow:var(--shadow);
+    transition:transform .32s cubic-bezier(.22,.61,.36,1);transform:translateY(112%)}
+  .sheet.open{transform:translateY(0)}
+  /* while the More sheet is open, hide the quick controls (zoom + dock) so they don't sit
+     under the backdrop (a tap on zoom would otherwise close the sheet instead of zooming) */
+  .zoomdock,.botdock{transition:opacity .2s}
+  .ui.sheet-open .zoomdock,.ui.sheet-open .botdock{opacity:0;pointer-events:none}
+  /* tap anywhere off the sheet closes it (sits between botdock z31 and sheet z33) */
+  .sheet-backdrop{position:absolute;inset:0;z-index:32;background:rgba(0,0,0,.001)}
+  .sheet-backdrop[hidden]{display:none}
+  /* handle is a real button with a >=44px tall tap target */
+  .handle{width:46px;height:5px;border-radius:999px;background:rgba(255,255,255,.32);
+    margin:0 auto;padding:20px 40px;background-clip:content-box;box-sizing:content-box;
+    border:0;display:block;cursor:pointer}
+  .handle:active{background:rgba(255,255,255,.55)}
+  .sheet-close{position:absolute;top:6px;right:12px;width:38px;height:38px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;background:var(--chip);
+    border:1px solid var(--glass-line);color:var(--txt);z-index:1}
+  .sheet-close svg{width:18px;height:18px}
+  .sheet-close:active{transform:scale(.92)}
+
+  .lensrow{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .lensrow::-webkit-scrollbar{display:none}
+  .lens{flex:0 0 auto;padding:7px 13px;border-radius:999px;font-weight:650;font-size:13px;
+    background:var(--chip);border:1px solid var(--glass-line);color:var(--txt)}
+  .lens.on{background:var(--chip-on);border-color:var(--accent);color:var(--accent)}
+
+  .ctrl-row{display:flex;flex-direction:column;gap:1px}
+  .ctrl-head{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+  .ctrl-head .i{width:15px;height:15px;flex:0 0 auto}
+  .ctrl-head .val{margin-left:auto;color:var(--txt);font-weight:650;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;background:transparent;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:999px;
+    background:linear-gradient(90deg,var(--accent) var(--p,50%),rgba(255,255,255,.14) var(--p,50%))}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-9px;
+    border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+
+  .toggles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .toggle{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    padding:6px 3px;border-radius:13px;background:var(--chip);border:1px solid var(--glass-line);
+    font-size:10px;font-weight:600;color:var(--muted);min-height:46px}
+  .toggle .ic{display:flex;align-items:center;justify-content:center;height:18px}
+  .toggle .ic svg{width:18px;height:18px}
+  .toggle.on{background:var(--chip-on);border-color:var(--accent);color:var(--accent)}
+  .toggle:disabled{opacity:.32}
+  /* the lens/resolution can't reach the requested fps -> show the real max in amber */
+  .toggle.capped{background:rgba(210,153,34,.16);border-color:#d29922;color:#e3b341}
+  .toggles + .toggles{margin-top:-2px}
+
+  /* image adjustment sliders (baked into the SENT image via canvas) */
+  .adjrow{display:flex;align-items:center;gap:8px}
+  .adjlbl{font-size:11px;color:var(--muted);width:58px;flex:0 0 auto;font-weight:600}
+  .adjrow input[type=range]{height:24px}
+  /* framing overlays (preview only, not sent) */
+  .grid-ov{position:fixed;inset:0;z-index:24;width:100%;height:100%;pointer-events:none}
+  .grid-ov[hidden]{display:none}
+  .grid-ov path{stroke:rgba(255,255,255,.5);stroke-width:1;fill:none;vector-effect:non-scaling-stroke}
+  .level-ov{position:fixed;inset:0;z-index:24;pointer-events:none;display:flex;align-items:center;justify-content:center}
+  .level-ov[hidden]{display:none}
+  .level-line{width:46%;height:2px;border-radius:2px;background:rgba(255,255,255,.75);
+    box-shadow:0 1px 3px rgba(0,0,0,.6);transition:transform .06s linear, background .2s}
+  .level-ov.level .level-line{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .level-ov .level-dot{position:absolute;width:9px;height:9px;border-radius:50%;
+    border:2px solid rgba(255,255,255,.75)}
+
+  .start{width:100%;min-height:48px;border-radius:16px;font-size:16px;font-weight:700;color:#fff;
+    background:var(--accent2);border:1px solid var(--accent);
+    box-shadow:0 0 0 1px rgba(63,185,80,.4),0 8px 24px rgba(46,160,67,.35);transition:.25s}
+  .start:active{transform:scale(.99)}
+  .start.stop{background:rgba(248,81,73,.14);border-color:var(--bad);color:var(--bad);box-shadow:none}
+  .log{position:absolute;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 4px);
+    text-align:center;font-size:11px;color:rgba(205,215,225,.85);pointer-events:none;
+    text-shadow:0 1px 3px #000;z-index:20}
+  /* Phone in LANDSCAPE: keep the same dock layout, just more compact. The vertical
+     zoom uses the (now tall) right edge; the bottom dock + sheet stay at the bottom. */
+  @media (orientation: landscape) and (max-height: 560px){
+    .zoomdock{ top:44%; padding:7px 5px; }
+    .vztrack{ height:62vh; max-height:none; width:40px; }
+    .botdock{ gap:6px; padding:6px 10px calc(env(safe-area-inset-bottom,6px) + 6px); }
+    .lensrow{ justify-content:center; }
+    .lens{ padding:6px 11px; font-size:13px; }
+    .start{ min-height:40px; font-size:15px; }
+    .morebtn{ width:46px; }
+    .log{ display:none; }
+    .ctrl-row{ gap:2px; }
+    .ctrl-head{ font-size:12px; }
+    input[type=range]{ height:24px; }
+    .toggles{ gap:6px; }
+    .toggle{ min-height:40px; font-size:10px; padding:5px 2px; gap:2px; }
+    .toggle .ic{ height:18px; }
+    .toggle .ic svg{ width:18px; height:18px; }
+    .hint-card{ margin-bottom:56px; }
+  }
+  @media (prefers-reduced-motion: reduce){ .sheet{transition:opacity .2s} }
+</style>
+</head>
+<body>
+  <video id="preview" autoplay muted playsinline></video>
+  <video id="src" autoplay muted playsinline></video>
+
+  <div class="ui" id="ui">
+    <div class="topbar" id="topbar">
+      <div class="pill"><span class="dot" id="dot"></span><span id="status">ready</span></div>
+      <div class="topright">
+        <div class="statbadge" id="badge" hidden></div>
+        <button class="iconbtn" id="snapBtn" aria-label="Snapshot" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h1.5l.8-1.4A2 2 0 0 1 11 4.7h2a2 2 0 0 1 1.7.9L15.5 7H17a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="11" cy="13" r="3.2"/></svg></button>
+        <button class="iconbtn" id="reloadBtn" aria-label="Reload page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></button>
+      </div>
+    </div>
+
+    <div class="hint" id="hint">
+      <div class="hint-card">
+        <div class="hint-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h1.7l.9-1.6A2 2 0 0 1 10.3 4.5h3.4a2 2 0 0 1 1.7.9l.9 1.6H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="11.5" cy="13" r="3.6"/></svg></div>
+        <div class="hint-t">Phone → webcam</div>
+        <div class="hint-s">Press <b>Start</b> and allow camera access.</div>
+      </div>
+    </div>
+
+    <!-- framing overlays (preview only, not sent) -->
+    <svg class="grid-ov" id="gridOv" viewBox="0 0 99 99" preserveAspectRatio="none" hidden><path d="M33 0V99M66 0V99M0 33H99M0 66H99"/></svg>
+    <div class="level-ov" id="levelOv" hidden><div class="level-line" id="levelLine"></div><div class="level-dot"></div></div>
+
+    <!-- always-visible vertical zoom on the right edge (custom touch slider) -->
+    <div class="zoomdock" id="zoomdock">
+      <div class="zchip" id="zoomVal">1.0×</div>
+      <div class="vztrack" id="vztrack" role="slider" aria-label="Zoom" aria-valuemin="1" aria-valuemax="8" aria-valuenow="1" tabindex="0">
+        <div class="vzfill" id="vzfill"></div>
+        <div class="vzthumb" id="vzthumb"></div>
+      </div>
+      <input type="range" id="zoom" class="vzoom-native" min="1" max="8" step="0.1" value="1" aria-hidden="true" tabindex="-1">
+    </div>
+
+    <!-- always-visible bottom dock: lens pills + Start + More -->
+    <div class="botdock" id="botdock">
+      <div class="lensrow" id="lensrow"></div>
+      <div class="botrow">
+        <button class="start" id="toggle">▶ Start</button>
+        <button class="iconbtn morebtn" id="moreBtn" aria-label="More controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.6 7.6 0 0 0 .1-2l1.8-1.4-2-3.4-2.1.9a7.6 7.6 0 0 0-1.7-1l-.3-2.3H9.7l-.3 2.3a7.6 7.6 0 0 0-1.7 1l-2.1-.9-2 3.4L5.4 11a7.6 7.6 0 0 0 0 2l-1.8 1.4 2 3.4 2.1-.9a7.6 7.6 0 0 0 1.7 1l.3 2.3h4.6l.3-2.3a7.6 7.6 0 0 0 1.7-1l2.1.9 2-3.4z"/></svg></button>
+      </div>
+    </div>
+
+    <!-- collapsible "more" sheet (opened with the More button) -->
+    <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+    <div class="sheet" id="sheet">
+      <button class="handle" id="sheetHandle" type="button" aria-label="Close controls"></button>
+      <button class="sheet-close" id="sheetClose" type="button" aria-label="Close controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+
+      <div class="ctrl-row">
+        <div class="ctrl-head"><svg class="i" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="14" width="4" height="6" rx="1.3"/><rect x="10" y="9" width="4" height="11" rx="1.3"/><rect x="17" y="4" width="4" height="16" rx="1.3"/></svg> Bitrate <span class="val" id="brVal">8.0 Mbps</span></div>
+        <input type="range" id="bitrate" min="2" max="20" step="1" value="8">
+      </div>
+
+      <div class="toggles">
+        <button class="toggle" id="fpsBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 13l3.4-3"/></svg></span><span id="fpsLbl">30 fps</span></button>
+        <button class="toggle" id="resBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H5a1 1 0 0 0-1 1v3M16 4h3a1 1 0 0 1 1 1v3M16 20h3a1 1 0 0 0 1-1v-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg></span><span id="resLbl">720p</span></button>
+        <button class="toggle" id="torchBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L5 13h6l-1 9 8-12h-6z"/></svg></span>Flash</button>
+        <button class="toggle" id="mirrorBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 7l-4 5 4 5"/><path d="M15 7l4 5-4 5"/></svg></span>Mirror</button>
+      </div>
+
+      <div class="toggles">
+        <button class="toggle" id="rotateBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></span>Rotate 180°</button>
+        <button class="toggle" id="focusBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>Focus</button>
+        <button class="toggle" id="autoBrBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 9 9"/><path d="M12 12l4-2"/><path d="M3 12a9 9 0 0 0 3.5 7.1M21 12a9 9 0 0 1-3.5 7.1"/></svg></span>Auto bitrate</button>
+        <button class="toggle" id="autostartBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/><path d="M19 4v4"/></svg></span>Auto-start</button>
+      </div>
+
+      <div class="toggles" style="grid-template-columns:repeat(3,1fr)">
+        <button class="toggle" id="gridBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></span>Grid</button>
+        <button class="toggle" id="levelBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h6M16 12h6"/><circle cx="12" cy="12" r="2.6"/></svg></span>Level</button>
+        <button class="toggle" id="adjResetBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></svg></span>Reset</button>
+      </div>
+
+      <div class="adjrow"><span class="adjlbl">Bright</span><input type="range" id="adjBright" min="0.5" max="1.6" step="0.02" value="1"></div>
+      <div class="adjrow"><span class="adjlbl">Contrast</span><input type="range" id="adjContrast" min="0.5" max="1.6" step="0.02" value="1"></div>
+      <div class="adjrow"><span class="adjlbl">Saturation</span><input type="range" id="adjSat" min="0" max="2" step="0.02" value="1"></div>
+      <div class="adjrow"><span class="adjlbl">Warmth</span><input type="range" id="adjWarmth" min="-1" max="1" step="0.02" value="0"></div>
+    </div>
+  </div>
+  <div class="focusring" id="focusring"></div>
+  <div class="log" id="log"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const preview=$('#preview'), srcVideo=$('#src'), dot=$('#dot'), statusEl=$('#status'),
+      badge=$('#badge'), hint=$('#hint'), logEl=$('#log'), ui=$('#ui'), sheet=$('#sheet'),
+      toggleBtn=$('#toggle'), lensrow=$('#lensrow'),
+      zoomEl=$('#zoom'), zoomVal=$('#zoomVal'),
+      vztrack=$('#vztrack'), vzfill=$('#vzfill'), vzthumb=$('#vzthumb'),
+      brEl=$('#bitrate'), brVal=$('#brVal'),
+      fpsBtn=$('#fpsBtn'), fpsLbl=$('#fpsLbl'), resBtn=$('#resBtn'), resLbl=$('#resLbl'),
+      torchBtn=$('#torchBtn'), mirrorBtn=$('#mirrorBtn'),
+      rotateBtn=$('#rotateBtn'), focusBtn=$('#focusBtn'), autoBrBtn=$('#autoBrBtn'),
+      autostartBtn=$('#autostartBtn'), snapBtn=$('#snapBtn'), focusring=$('#focusring'),
+      moreBtn=$('#moreBtn'),
+      gridBtn=$('#gridBtn'), levelBtn=$('#levelBtn'), adjResetBtn=$('#adjResetBtn'),
+      adjBrightEl=$('#adjBright'), adjContrastEl=$('#adjContrast'), adjSatEl=$('#adjSat'), adjWarmthEl=$('#adjWarmth'),
+      gridOv=$('#gridOv'), levelOv=$('#levelOv'), levelLine=$('#levelLine');
+
+// ---- state ----
+let ws=null, running=false, wakeLock=null;
+let viewers=new Map();                       // vid -> {pc, sender}  (multiple viewers: app preview + OBS)
+let camStream=null, camTrack=null;          // raw camera
+let usingCanvas=false, canvas=null, cctx=null, canvasStream=null, canvasTrack=null, rafId=0;
+let zoom=1, bitrateKbps=8000;
+let zoomDragging=false;
+const RES=['1280x720','1920x1080','640x480'], RES_LBL={'1280x720':'720p','1920x1080':'1080p','640x480':'480p'};
+let resIdx=0;
+const FPS=[24,30,60]; let fpsIdx=1;
+let facing='environment', deviceId=null;     // which camera
+let hideT=0;
+let rot180=false, autoBitrate=false, autostart=false, focusEnabled=false, wantMirror=false;
+// ---- dynamic lens (iOS-style): the zoom factor picks the physical lens, digital crop fills the gaps ----
+let backLenses=[], curBase=1, absZoom=1, autoLens=true;
+const ULTRA_BASE=0.5, WIDE_BASE=1, TELE_BASE=2;   // assumed lens zoom factors (telephoto varies by model)
+// ---- image adjustments (baked into the SENT image) + framing overlays (preview only) ----
+let adjBright=1, adjContrast=1, adjSat=1, adjWarmth=0, gridOn=false, levelOn=false, orientHandler=null;
+const KEY=new URLSearchParams(location.search).get('k')||'';     // relay token (anti-hijack)
+let iceServers=[{urls:'stun:stun.l.google.com:19302'}];          // /ice can override this (TURN)
+
+// ---- persist settings (the page often needs reloading because of the cache) ----
+const LS='phonecam.v1';
+function saveSettings(){ try{ localStorage.setItem(LS, JSON.stringify({
+  resIdx, fpsIdx, bitrateKbps, facing,
+  mirror:preview.classList.contains('mirror'), rot180, autoBitrate, autostart,
+  adjBright, adjContrast, adjSat, adjWarmth, gridOn })); }catch{} }
+function loadSettings(){ try{
+  const s=JSON.parse(localStorage.getItem(LS)||'{}');
+  if(Number.isInteger(s.resIdx)&&s.resIdx>=0&&s.resIdx<RES.length) resIdx=s.resIdx;
+  if(Number.isInteger(s.fpsIdx)&&s.fpsIdx>=0&&s.fpsIdx<FPS.length) fpsIdx=s.fpsIdx;
+  if(s.bitrateKbps) bitrateKbps=Math.min(20000,Math.max(2000,s.bitrateKbps));
+  if(s.facing==='user'||s.facing==='environment') facing=s.facing;
+  if(typeof s.mirror==='boolean') wantMirror=s.mirror;
+  if(typeof s.rot180==='boolean') rot180=s.rot180;
+  if(typeof s.autoBitrate==='boolean') autoBitrate=s.autoBitrate;
+  if(typeof s.autostart==='boolean') autostart=s.autostart;
+  const clamp=(v,a,b,d)=> (typeof v==='number'&&v>=a&&v<=b)?v:d;
+  adjBright=clamp(s.adjBright,0.5,1.6,1); adjContrast=clamp(s.adjContrast,0.5,1.6,1);
+  adjSat=clamp(s.adjSat,0,2,1); adjWarmth=clamp(s.adjWarmth,-1,1,0);
+  if(typeof s.gridOn==='boolean') gridOn=s.gridOn;
+}catch{} }
+
+function log(m){ logEl.textContent=m; }
+function setState(s,kind){ statusEl.textContent=s; dot.className='dot'+(kind?' '+kind:''); }
+function setRange(el){ const min=+el.min,max=+el.max; el.style.setProperty('--p',((el.value-min)/(max-min)*100)+'%'); }
+
+// ---- request a camera stream with the current settings ----
+// IMPORTANT: only `ideal` (no `max`/`exact`/`min`)! This way getUserMedia NEVER throws
+// an OverconstrainedError — the worst case is just a lower fps, not a black image.
+// iOS: the requested RESOLUTION decides which camera FORMAT WebKit picks, and that sets the
+// fps. The 720p60 format exists on practically EVERY modern iPhone (1080p60 only on 12+/iOS16+).
+// So at 60 fps, 720p60 is a reliable fallback. Both branches (deviceId AND facingMode) are stepped,
+// and at the END of the chain a `{video:true}` safety net -> some camera always loads.
+async function getStream(){
+  const [w,h]=RES[resIdx].split('x').map(Number);
+  const want=FPS[fpsIdx];
+  const fr={ideal:want};
+  const fullSize={ width:{ideal:w}, height:{ideal:h}, frameRate:fr };   // the desired size + fps
+  const hdSize  ={ width:{ideal:1280}, height:{ideal:720}, frameRate:fr }; // reliable 720p60 fallback
+  const noFps   ={ width:{ideal:w}, height:{ideal:h} };                 // size WITHOUT fps -> default fps, but works
+  // at 60 fps: if the desired size is NOT 720p, try that first (1080p60 on newer phones),
+  // then the 720p60 fallback. At 720p / <60, a single size attempt is enough.
+  const sized = (want>=60 && !(w===1280&&h===720)) ? [fullSize, hdSize] : [ want>=60 ? hdSize : fullSize ];
+  const attempts=[];
+  if(deviceId){
+    for(const s of sized) attempts.push(Object.assign({deviceId:{exact:deviceId}}, s));
+    attempts.push(Object.assign({deviceId:{exact:deviceId}}, noFps));   // size, without fps
+    attempts.push({deviceId:{exact:deviceId}});                         // just the lens, WITHOUT constraints (ultra-wide!)
+  }
+  for(const s of sized) attempts.push(Object.assign({facingMode:{ideal:facing}}, s));
+  attempts.push(Object.assign({facingMode:{ideal:facing}}, noFps));     // size, without fps
+  attempts.push({facingMode:{ideal:facing}});                          // just the side, WITHOUT constraints
+  attempts.push(true);                                                 // FINAL safety net: any camera
+  let lastErr;
+  for(const v of attempts){
+    try{ return await navigator.mediaDevices.getUserMedia({audio:false, video:v}); }
+    catch(e){ lastErr=e; }
+  }
+  throw lastErr || new Error('getUserMedia');
+}
+
+// ---- update the track that's actually sent (zoom: canvas or direct) ----
+function startCanvas(){
+  if(usingCanvas || !camTrack) return;
+  usingCanvas=true;
+  const st=camTrack.getSettings();
+  canvas=canvas||document.createElement('canvas');
+  canvas.width=st.width||1280; canvas.height=st.height||720;
+  cctx=canvas.getContext('2d',{alpha:false});
+  srcVideo.srcObject=camStream; srcVideo.play().catch(()=>{});
+  canvasStream=canvas.captureStream(FPS[fpsIdx]);
+  canvasTrack=canvasStream.getVideoTracks()[0];
+  drawLoop();
+}
+function stopCanvas(){
+  usingCanvas=false;
+  if(rafId) cancelAnimationFrame(rafId), rafId=0;
+  if(canvasStream) canvasStream.getTracks().forEach(t=>t.stop());
+  canvasStream=canvasTrack=null; srcVideo.srcObject=null;
+}
+function filtersActive(){ return Math.abs(adjBright-1)>0.001 || Math.abs(adjContrast-1)>0.001 ||
+  Math.abs(adjSat-1)>0.001 || Math.abs(adjWarmth)>0.001; }
+let lastDraw=0;
+function drawLoop(){
+  if(!usingCanvas) return;
+  rafId=requestAnimationFrame(drawLoop);              // keep the loop alive every vsync...
+  const now=performance.now(), interval=1000/FPS[fpsIdx];
+  if(now-lastDraw < interval-1) return;               // ...but only do the heavy draw at target fps
+  lastDraw=now;                                        // (120Hz ProMotion would otherwise draw 2-4x too often)
+  const vw=srcVideo.videoWidth, vh=srcVideo.videoHeight;
+  if(vw&&vh){
+    // size the canvas to the ACTUAL video frame (orientation-correct). getSettings() can report
+    // the sensor's native (portrait) dims while the real frames are landscape -> drawing into a
+    // mismatched canvas squished the image. Match the real frame -> aspect ratio always correct.
+    if(canvas.width!==vw || canvas.height!==vh){ canvas.width=vw; canvas.height=vh; }
+    const sw=vw/zoom, sh=vh/zoom, sx=(vw-sw)/2, sy=(vh-sh)/2;
+    try{
+      cctx.filter = filtersActive() ? `brightness(${adjBright}) contrast(${adjContrast}) saturate(${adjSat})` : 'none';
+      if(rot180){                                  // the SENT image should rotate too (phone mounted upside down)
+        cctx.save(); cctx.translate(canvas.width, canvas.height); cctx.rotate(Math.PI);
+        cctx.drawImage(srcVideo,sx,sy,sw,sh,0,0,canvas.width,canvas.height); cctx.restore();
+      }else{
+        cctx.drawImage(srcVideo,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
+      }
+      cctx.filter='none';
+      if(Math.abs(adjWarmth)>0.001){               // color temperature via a gentle soft-light tint
+        cctx.save(); cctx.globalCompositeOperation='soft-light';
+        cctx.globalAlpha=Math.min(0.85, Math.abs(adjWarmth)*0.8);
+        cctx.fillStyle = adjWarmth>0 ? '#ff9a3c' : '#3c9aff';
+        cctx.fillRect(0,0,canvas.width,canvas.height); cctx.restore();
+      }
+    }catch{}
+  }
+}
+// the canvas is used if zoom, rotation OR image adjustments are active (the raw track can't do these)
+function needCanvas(){ return zoom>1.001 || rot180 || filtersActive(); }
+async function updatePipeline(){
+  if(!running) return;
+  if(needCanvas()){
+    if(!usingCanvas) startCanvas();
+    await replaceTrackAll(canvasTrack); preview.srcObject=canvasStream;
+  }else{
+    if(zoomDragging) return;          // keep the canvas ON during a drag; reconcile once on release
+    if(usingCanvas) stopCanvas();
+    await replaceTrackAll(camTrack); preview.srcObject=camStream;
+  }
+  await applySenderParams();
+}
+// pick the physical lens whose base zoom is the largest that is <= the requested zoom
+function lensForZoom(z){
+  if(!backLenses.length) return null;
+  let pick=backLenses[0];
+  for(const L of backLenses){ if(L.base<=z+1e-3) pick=L; }
+  return pick;
+}
+function zMin(){ return backLenses.length ? backLenses[0].base : 1; }
+function syncZoomUI(){ zoomEl.min=zMin(); zoomEl.value=absZoom; setRange(zoomEl);
+  zoomVal.textContent=(absZoom<10?absZoom.toFixed(1):Math.round(absZoom))+'×';
+  if(typeof renderZoomTicks==='function'){ renderZoomTicks(); syncZoomThumb(); } }
+
+// absolute zoom: choose the lens (on release) + apply digital crop for the in-between factors
+async function applyZoom(abs, fromRelease){
+  abs=Math.min(8, Math.max(zMin(), abs));
+  absZoom=abs; zoomVal.textContent=(abs<10?abs.toFixed(1):Math.round(abs))+'×';
+  // lens switch only on release / pinch-end (a mid-drag reacquire would flash the camera)
+  if(fromRelease && running && autoLens && backLenses.length>1 && facing==='environment'){
+    const L=lensForZoom(abs);
+    if(L && L.deviceId!==deviceId){
+      deviceId=L.deviceId; curBase=L.base;
+      zoom=Math.max(1, abs/curBase);
+      await reacquire(true).catch(e=>log('reacquire: '+e.message));
+      return;                                  // reacquire rebuilt the pipeline + controls
+    }
+  }
+  zoom=Math.max(1, abs/curBase);               // digital crop on the current lens
+  if(running && needCanvas()!==usingCanvas) await updatePipeline();
+}
+function selectLens(L){                         // manual lens pill -> jump to that lens at its native zoom
+  deviceId=L.deviceId; facing='environment'; curBase=L.base; absZoom=L.base; zoom=1;
+  syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message));
+}
+async function replaceTrackAll(track){
+  if(!track) return;
+  for(const v of viewers.values()){ try{ v.sender && await v.sender.replaceTrack(track); }catch{} }
+}
+
+// ---- send parameters (bitrate + smooth motion) — for every viewer ----
+async function applySenderParams(){
+  for(const v of viewers.values()) await applyParamsTo(v.sender);
+}
+async function applyParamsTo(sndr){
+  if(!sndr) return;
+  try{
+    const p=sndr.getParameters();
+    if(!p.encodings||!p.encodings.length) p.encodings=[{}];
+    p.encodings[0].maxBitrate=bitrateKbps*1000;
+    p.encodings[0].maxFramerate=FPS[fpsIdx];          // concrete target for maintain-framerate
+    if('degradationPreference' in p) p.degradationPreference='maintain-framerate';
+    await sndr.setParameters(p);
+  }catch(e){ log('setParameters: '+e.message); }
+}
+
+// iOS reclaims the camera on a call / FaceTime / screen-lock -> the track fires 'ended' and we'd
+// keep sending black frames while the pill still reads LIVE. Watch it and re-acquire automatically.
+function wireCamTrack(t){
+  if(!t) return;
+  t.onended=()=>{ if(running){ log('Camera interrupted — recovering…'); reacquire().catch(()=>{}); } };
+}
+
+// ---- re-request camera/resolution/fps while live ----
+let reacquiring=false;
+async function reacquire(switchCam=false){
+  if(reacquiring) return false;                  // don't let two camera restarts stack (drag/release spam)
+  reacquiring=true;
+  try{
+  // when switching fps/resolution (switchCam=false): NEVER stop the old one until we've got
+  // the new one — otherwise a rejected request (e.g. 60 fps on an unsupported lens) goes black FOREVER.
+  // When SWITCHING LENS (switchCam=true), though, on iOS the old one must be released FIRST or it won't switch.
+  const old=camStream, oldTrack=camTrack;
+  if(switchCam && old) old.getTracks().forEach(t=>t.stop());
+  let fresh;
+  try{ fresh=await getStream(); }
+  catch(e){
+    log('Camera error: '+e.message);
+    camStream=old; camTrack=oldTrack;            // (for fps/res the old one is still LIVE) -> restore the display/HUD
+    showBadge(); reflectActualFps();
+    return false;                                // the caller can roll back the fps/resolution change
+  }
+  if(!switchCam && old) old.getTracks().forEach(t=>t.stop());  // success -> NOW release the old one
+  camStream=fresh; camTrack=fresh.getVideoTracks()[0]; wireCamTrack(camTrack);
+  if(usingCanvas){
+    stopCanvas(); startCanvas();                 // new track -> fresh canvas (size/fps refreshes)
+    await replaceTrackAll(canvasTrack);
+    preview.srcObject=canvasStream;
+  }else{
+    await replaceTrackAll(camTrack);
+    preview.srcObject=camStream;
+  }
+  await applySenderParams();
+  showBadge(); buildControls();
+  return true;
+  } finally { reacquiring=false; }
+}
+
+// ---- build the controls based on the camera's capabilities ----
+async function buildControls(){
+  // lens chips from the available cameras
+  let cams=[];
+  try{ cams=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'); }catch{}
+  lensrow.innerHTML='';
+  const addChip=(label,on,fn)=>{ const b=document.createElement('button'); b.className='lens'+(on?' on':'');
+    b.textContent=label; b.onclick=()=>{ poke(); fn(); }; lensrow.appendChild(b); };
+  const curId=camTrack&&camTrack.getSettings?camTrack.getSettings().deviceId:null;
+  backLenses=[];
+  const facingChips=()=>{
+    addChip('Front', facing==='user', ()=>{ deviceId=null; facing='user'; curBase=1; absZoom=1; zoom=1; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); });
+    addChip('Back', facing==='environment', ()=>{ deviceId=null; facing='environment'; curBase=1; absZoom=1; zoom=1; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); });
+  };
+  if(cams.length>1 && cams.some(c=>c.label)){
+    // iOS exposes several (partly VIRTUAL) back cameras -> dedup by name + meaningful names,
+    // the virtual combo cameras (dual/triple) filtered out. Per bucket we prefer the NON-virtual one.
+    const buckets={};
+    cams.forEach(c=>{
+      const l=(c.label||'').toLowerCase();
+      const name = (l.includes('front')||l.includes('elöl')||l.includes('truedepth')) ? 'Front'
+                 : l.includes('ultra') ? '0.5×'
+                 : l.includes('tele')  ? '2×'
+                 : (l.includes('back')||l.includes('rear')||l.includes('hát')) ? 'Back'
+                 : null;
+      if(!name) return;
+      const virt = l.includes('dual')||l.includes('triple');
+      if(!buckets[name] || (buckets[name].v && !virt)) buckets[name]={c, v:virt};
+    });
+    // build the back-lens list with assumed base zoom factors (for dynamic switching)
+    const baseFor={'0.5×':ULTRA_BASE,'Back':WIDE_BASE,'2×':TELE_BASE};
+    ['0.5×','Back','2×'].forEach(n=>{ const b=buckets[n]; if(b) backLenses.push({name:n, base:baseFor[n], deviceId:b.c.deviceId}); });
+    backLenses.sort((a,b)=>a.base-b.base);
+    const pillLbl={'0.5×':'0.5×','Back':'1×','2×':'2×'};
+    backLenses.forEach(L=> addChip(pillLbl[L.name], L.deviceId===curId, ()=>selectLens(L)) );
+    if(buckets['Front']){ const f=buckets['Front'];
+      addChip('Front', facing==='user', ()=>{ deviceId=f.c.deviceId; facing='user'; curBase=1; absZoom=1; zoom=1; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); }); }
+    autoLens = backLenses.length>1;   // auto-switch only makes sense with multiple back lenses
+    if(!backLenses.length){ lensrow.innerHTML=''; facingChips(); }   // not enough info -> front/back
+  }else{
+    facingChips();
+  }
+  syncZoomUI();   // zoom slider range/value follows the available lenses
+  // torch + focus only if the camera supports it (on iOS Safari usually neither exists)
+  let caps={}; try{ caps=camTrack.getCapabilities?camTrack.getCapabilities():{}; }catch{}
+  torchBtn.disabled = !(caps && caps.torch);
+  const focusable = !!(caps && (caps.pointsOfInterest ||
+    (Array.isArray(caps.focusMode) && (caps.focusMode.includes('single-shot')||caps.focusMode.includes('continuous')||caps.focusMode.includes('manual')))));
+  focusBtn.disabled = !focusable;
+  if(!focusable){ focusEnabled=false; focusBtn.classList.remove('on'); }
+  reflectActualFps();
+}
+
+// ---- tap-to-focus: focuses on the touched point (where the camera supports it) ----
+async function focusAt(x,y){
+  if(!focusEnabled || !camTrack || !camTrack.getCapabilities) return;
+  let caps={}; try{ caps=camTrack.getCapabilities(); }catch{ return; }
+  const rect=preview.getBoundingClientRect();
+  const px=Math.min(1,Math.max(0,(x-rect.left)/rect.width));
+  const py=Math.min(1,Math.max(0,(y-rect.top)/rect.height));
+  const adv=[];
+  if(caps.pointsOfInterest) adv.push({pointsOfInterest:[{x:px,y:py}]});
+  if(Array.isArray(caps.focusMode)){
+    if(caps.focusMode.includes('single-shot')) adv.push({focusMode:'single-shot'});
+    else if(caps.focusMode.includes('continuous')) adv.push({focusMode:'continuous'});
+  }
+  if(!adv.length) return;
+  try{ await camTrack.applyConstraints({advanced:adv}); showFocusRing(x,y); }
+  catch(e){ log('Focus: '+e.message); }
+}
+function showFocusRing(x,y){
+  focusring.style.left=x+'px'; focusring.style.top=y+'px';
+  focusring.classList.remove('show'); void focusring.offsetWidth; focusring.classList.add('show');
+}
+
+// ---- show the real fps: iOS silently drops the requested fps (max) to 30 if the
+// lens/resolution can't handle it. We show the ACTUAL frame count + amber indicator. ----
+function reflectActualFps(){
+  const want=FPS[fpsIdx];
+  // We rely ONLY on the lens's real capability ceiling (getCapabilities). getSettings().frameRate
+  // updates late on iOS -> it gave a false "limited" indicator. The ACTUAL fps is shown by the HUD (getStats).
+  let capMax=0; try{ const c=camTrack&&camTrack.getCapabilities&&camTrack.getCapabilities();
+    if(c&&c.frameRate&&c.frameRate.max) capMax=Math.round(c.frameRate.max); }catch{}
+  if(capMax && capMax < want-4){               // the lens's capability definitely can't reach this
+    fpsLbl.textContent = capMax+' fps';
+    fpsBtn.classList.add('capped');
+    fpsBtn.title = want+' fps not available with this lens — max '+capMax;
+  }else{
+    fpsLbl.textContent = want+' fps';
+    fpsBtn.classList.remove('capped');
+    fpsBtn.removeAttribute('title');
+  }
+}
+
+function showBadge(){
+  const t=camTrack&&camTrack.getSettings?camTrack.getSettings():{};
+  badge.hidden=false;
+  badge.innerHTML=`${t.width||'?'}×${t.height||'?'} · ${Math.round(t.frameRate||0)}fps<br>${(bitrateKbps/1000).toFixed(1)} Mbps`;
+}
+
+// ---- live quality HUD (getStats) + adaptive "Auto" bitrate ----
+let statsT=0, autoTarget=8000;
+function startStatsLoop(){ stopStatsLoop(); autoTarget=bitrateKbps; statsT=setInterval(sampleStats, 1000); }
+function stopStatsLoop(){ if(statsT){ clearInterval(statsT); statsT=0; } }
+async function sampleStats(){
+  if(!running){ stopStatsLoop(); return; }
+  // aggregate ALL connected viewers (worst-case loss/RTT) with PER-VIEWER delta counters,
+  // so a congested non-first viewer still backs the encoder off and counters can't cross-corrupt.
+  let worstLoss=0, worstRtt=0, dispW=0, dispH=0, dispFps=0, dispMbps=0, any=false;
+  for(const v of viewers.values()){
+    if(!v.pc || v.pc.connectionState!=='connected' || !v.sender || !v.sender.getStats) continue;
+    let rep; try{ rep=await v.sender.getStats(); }catch{ continue; }
+    let bytes=0,ts=0,fps=0,w=0,h=0,sent=0,lost=0,rtt=0;
+    rep.forEach(s=>{
+      if(s.type==='outbound-rtp' && (s.kind==='video'||s.mediaType==='video')){
+        bytes=s.bytesSent||0; ts=s.timestamp||0; if(s.framesPerSecond) fps=s.framesPerSecond;
+        if(s.frameWidth) w=s.frameWidth; if(s.frameHeight) h=s.frameHeight; sent=s.packetsSent||0; }
+      if(s.type==='remote-inbound-rtp' && (s.kind==='video'||s.mediaType==='video')){
+        if(s.roundTripTime!=null) rtt=s.roundTripTime; if(s.packetsLost!=null) lost=s.packetsLost; }
+    });
+    const p=v._prev||(v._prev={bytes:0,ts:0,lost:0,sent:0});
+    let mbps=0; if(p.ts && ts>p.ts) mbps=(bytes-p.bytes)*8/((ts-p.ts)/1000)/1e6;
+    const dLost=Math.max(0,lost-p.lost), dSent=Math.max(0,sent-p.sent);
+    const lossPct=(dLost+dSent)>0 ? dLost/(dLost+dSent)*100 : 0;
+    p.bytes=bytes; p.ts=ts; p.lost=lost; p.sent=sent;
+    worstLoss=Math.max(worstLoss,lossPct); worstRtt=Math.max(worstRtt,rtt);
+    dispMbps+=mbps; if(w){ dispW=w; dispH=h; dispFps=fps; } any=true;
+  }
+  if(!any) return;
+  badge.hidden=false;
+  badge.innerHTML=`${dispW||'?'}×${dispH||'?'} · ${Math.round(dispFps)||0}fps<br>`+
+    `${dispMbps.toFixed(1)} Mbps${worstLoss>=0.5?(' · '+worstLoss.toFixed(0)+'% ↓'):''}${worstRtt?(' · '+Math.round(worstRtt*1000)+'ms'):''}`;
+  if(autoBitrate) adaptBitrate(worstLoss);
+}
+// AIMD: back off on packet loss (×0.8), ramp up on a clean line (+0.5 Mbps) up to the slider ceiling
+function adaptBitrate(lossPct){
+  const ceil=Math.round(+brEl.value*1000);
+  if(lossPct>3) autoTarget=Math.max(2000, Math.round(autoTarget*0.8));
+  else if(lossPct<1) autoTarget=Math.min(ceil, autoTarget+500);
+  autoTarget=Math.min(ceil, Math.max(2000, autoTarget));
+  if(Math.abs(autoTarget-bitrateKbps)>=250){ bitrateKbps=autoTarget; applySenderParams(); }
+}
+
+// ---- start / stop ----
+async function start(){
+  if(!navigator.mediaDevices?.getUserMedia){ log('No camera access (HTTPS required).'); setState('error','bad'); return; }
+  zoom=1; absZoom=1; curBase=1; syncZoomUI();
+  setState('camera…','wait');
+  try{ camStream=await getStream(); }
+  catch(e){ log('Camera error: '+e.message+' — accept the certificate and the permission.'); setState('no camera','bad'); return; }
+  camTrack=camStream.getVideoTracks()[0]; wireCamTrack(camTrack);
+  preview.srcObject=camStream; try{ await preview.play(); }catch{}
+  hint.hidden=true; running=true;
+  toggleBtn.textContent='■ Stop'; toggleBtn.classList.add('stop');
+  snapBtn.hidden=false;
+  try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch{}
+  await buildControls();
+  if(needCanvas()){ startCanvas(); preview.srcObject=canvasStream; }   // persisted rotation/zoom onto the sent image
+  connect();
+  startStatsLoop();
+  poke();
+}
+
+function sentTrack(){ return usingCanvas?canvasTrack:camTrack; }
+
+function connect(){
+  setState('connecting…','wait');
+  closeAllViewers();
+  ws=new WebSocket(`wss://${location.host}/relay`);     // multi-viewer signaling relay
+  ws.onopen=()=>{ ws.send(JSON.stringify({type:'hello', role:'sender', key:KEY})); setState('waiting for viewer…','wait'); sendBattery(); };
+  ws.onmessage=async e=>{
+    let m; try{ m=JSON.parse(e.data); }catch{ return; }
+    if(m.type==='viewer-join'){ await addViewer(m.id); }
+    else if(m.type==='viewer-leave'){ removeViewer(m.id); }
+    else if(m.type==='answer'){ const v=viewers.get(m.from); if(v){ try{ await v.pc.setRemoteDescription({type:'answer',sdp:m.sdp}); }catch(err){ log('answer error: '+err.message); } } }
+    else if(m.type==='ice'&&m.candidate){ const v=viewers.get(m.from); if(v){ try{ await v.pc.addIceCandidate(m.candidate); }catch{} } }
+    else if(m.type==='peer-gone'){ closeAllViewers(); setState('waiting for viewer…','wait'); }
+    else if(m.type==='denied'){ setState('access denied','bad');
+      log('Wrong/missing key — open the camera URL from the QR code.'); running=false; try{ws.close();}catch{} }
+    else if(m.type==='superseded'){ setState('replaced','bad');
+      log('Another phone connected — this one stopped.'); stop(); }
+  };
+  ws.onclose=()=>{ if(running){ setState('retrying…','wait'); setTimeout(()=>{ if(running) connect(); },1200); } };
+  ws.onerror=()=>log('WebSocket error — is the server running?');
+}
+
+// a separate PeerConnection for each viewer (app preview + OBS at the same time)
+async function addViewer(id){
+  removeViewer(id);
+  if(!camTrack || camTrack.readyState!=='live'){ try{ await reacquire(); }catch{} }
+  if(usingCanvas && (!canvasTrack || canvasTrack.readyState!=='live')){ stopCanvas(); startCanvas(); }
+  const tr=sentTrack();
+  if(!tr || tr.readyState!=='live'){ log('No live camera track'); return; }
+  const pc=new RTCPeerConnection({iceServers});
+  pc.onicecandidate=e=>{ if(e.candidate&&ws&&ws.readyState===1) ws.send(JSON.stringify({type:'ice', to:id, candidate:e.candidate})); };
+  pc.onconnectionstatechange=()=>{ updateAggState(); };
+  const sndr=pc.addTrack(tr, usingCanvas?canvasStream:camStream);
+  viewers.set(id, {pc, sender:sndr});
+  await applyParamsTo(sndr);
+  const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
+  if(ws && ws.readyState===1) ws.send(JSON.stringify({type:'offer', to:id, sdp:pc.localDescription.sdp}));
+}
+function removeViewer(id){ const v=viewers.get(id); if(v){ try{ v.pc.close(); }catch{} viewers.delete(id); } updateAggState(); }
+function closeAllViewers(){ for(const v of viewers.values()){ try{ v.pc.close(); }catch{} } viewers.clear(); updateAggState(); }
+function updateAggState(){
+  if(!running) return;
+  let conn=false, connecting=false;
+  for(const v of viewers.values()){
+    const st=v.pc.connectionState;
+    if(st==='connected') conn=true; else if(st==='connecting'||st==='new') connecting=true;
+  }
+  if(conn){ const n=[...viewers.values()].filter(v=>v.pc.connectionState==='connected').length;
+    setState('LIVE · '+n+(n===1?' viewer':' viewers'),'live'); showBadge(); }
+  else if(connecting) setState('connecting…','wait');
+  else setState('waiting for viewer…','wait');
+}
+
+async function stop(){
+  running=false; toggleBtn.textContent='▶ Start'; toggleBtn.classList.remove('stop');
+  snapBtn.hidden=true; stopStatsLoop();
+  badge.hidden=true; setState('stopped'); log(''); ui.classList.remove('ui-hidden');
+  try{ ws&&ws.close(); }catch{} closeAllViewers();
+  stopCanvas();
+  disableLevel(); levelOn=false; levelBtn.classList.remove('on');   // stop the deviceorientation sensor/overlay
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  preview.srcObject=null; hint.hidden=false;
+  try{ wakeLock&&wakeLock.release(); wakeLock=null; }catch{}
+}
+
+// ---- control events ----
+toggleBtn.onclick=()=>{ poke(); running?stop():start(); };
+// zoom input is now a hidden state mirror only — the custom #vztrack slider drives zoom (see below)
+brEl.oninput=()=>{ setRange(brEl); poke(); brVal.textContent=(+brEl.value).toFixed(1)+' Mbps';
+  if(!autoBitrate){ bitrateKbps=Math.round(+brEl.value*1000); if(running) applySenderParams(); }
+  else autoTarget=Math.min(autoTarget, Math.round(+brEl.value*1000));   // the ceiling can drop immediately
+  saveSettings(); };
+fpsBtn.onclick=async()=>{ poke(); const prev=fpsIdx; fpsIdx=(fpsIdx+1)%FPS.length; fpsLbl.textContent=FPS[fpsIdx]+' fps';
+  fpsBtn.classList.remove('capped'); fpsBtn.removeAttribute('title'); saveSettings();
+  if(running){ const ok=await reacquire(false); if(ok===false){ fpsIdx=prev; fpsLbl.textContent=FPS[fpsIdx]+' fps'; saveSettings(); reflectActualFps(); } } };
+resBtn.onclick=async()=>{ poke(); const prev=resIdx; resIdx=(resIdx+1)%RES.length; resLbl.textContent=RES_LBL[RES[resIdx]];
+  saveSettings();
+  if(running){ const ok=await reacquire(false); if(ok===false){ resIdx=prev; resLbl.textContent=RES_LBL[RES[resIdx]]; saveSettings(); } } };
+function toggleMirror(){ const on=!preview.classList.contains('mirror');
+  preview.classList.toggle('mirror',on); mirrorBtn.classList.toggle('on',on); saveSettings(); }
+mirrorBtn.onclick=()=>{ poke(); toggleMirror(); };
+torchBtn.onclick=async()=>{ poke(); const on=torchBtn.classList.toggle('on');
+  try{ await camTrack.applyConstraints({advanced:[{torch:on}]}); }catch{ torchBtn.classList.remove('on'); } };
+rotateBtn.onclick=async()=>{ poke(); rot180=!rot180; rotateBtn.classList.toggle('on',rot180);
+  preview.classList.toggle('rot180',rot180);
+  if(running && needCanvas()!==usingCanvas) await updatePipeline();
+  saveSettings(); };
+focusBtn.onclick=()=>{ poke(); if(focusBtn.disabled) return;
+  focusEnabled=!focusEnabled; focusBtn.classList.toggle('on',focusEnabled);
+  log(focusEnabled?'Tap the image to focus.':''); };
+autoBrBtn.onclick=()=>{ poke(); autoBitrate=!autoBitrate; autoBrBtn.classList.toggle('on',autoBitrate);
+  autoTarget=bitrateKbps; saveSettings(); };
+autostartBtn.onclick=()=>{ poke(); autostart=!autostart; autostartBtn.classList.toggle('on',autostart); saveSettings(); };
+snapBtn.onclick=()=>{ poke(); snapshot(); };
+
+// ---- image adjustments (baked into the sent image) ----
+function applyAdj(){ if(running && needCanvas()!==usingCanvas) updatePipeline(); saveSettings(); }
+adjBrightEl.oninput=()=>{ adjBright=+adjBrightEl.value; setRange(adjBrightEl); applyAdj(); };
+adjContrastEl.oninput=()=>{ adjContrast=+adjContrastEl.value; setRange(adjContrastEl); applyAdj(); };
+adjSatEl.oninput=()=>{ adjSat=+adjSatEl.value; setRange(adjSatEl); applyAdj(); };
+adjWarmthEl.oninput=()=>{ adjWarmth=+adjWarmthEl.value; setRange(adjWarmthEl); applyAdj(); };
+adjResetBtn.onclick=()=>{ poke(); adjBright=adjContrast=adjSat=1; adjWarmth=0;
+  adjBrightEl.value=1; adjContrastEl.value=1; adjSatEl.value=1; adjWarmthEl.value=0;
+  [adjBrightEl,adjContrastEl,adjSatEl,adjWarmthEl].forEach(setRange);
+  if(running && usingCanvas && !needCanvas()) updatePipeline(); saveSettings(); };
+
+// ---- framing: rule-of-thirds grid (preview only) ----
+// NB: gridOv is an SVG -> element.hidden doesn't reflect to the attribute, use (set/remove)Attribute
+function showGrid(on){ if(on) gridOv.removeAttribute('hidden'); else gridOv.setAttribute('hidden',''); }
+gridBtn.onclick=()=>{ poke(); gridOn=!gridOn; gridBtn.classList.toggle('on',gridOn); showGrid(gridOn); saveSettings(); };
+
+// ---- framing: horizon level (deviceorientation; iOS needs a motion permission) ----
+function onOrient(e){ const roll=Math.max(-45,Math.min(45, e.gamma||0));
+  levelLine.style.transform=`rotate(${-roll}deg)`; levelOv.classList.toggle('level', Math.abs(roll)<2); }
+async function enableLevel(){
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+      const p=await DeviceOrientationEvent.requestPermission();
+      if(p!=='granted'){ levelOn=false; levelBtn.classList.remove('on'); log('Motion access denied'); return; }
+    }
+    orientHandler=onOrient; window.addEventListener('deviceorientation',orientHandler); levelOv.hidden=false;
+  }catch(err){ levelOn=false; levelBtn.classList.remove('on'); log('Level: '+err.message); }
+}
+function disableLevel(){ if(orientHandler){ window.removeEventListener('deviceorientation',orientHandler); orientHandler=null; } levelOv.hidden=true; }
+levelBtn.onclick=()=>{ poke(); levelOn=!levelOn; levelBtn.classList.toggle('on',levelOn); levelOn?enableLevel():disableLevel(); };
+
+// ---- snapshot (from the current frame, downloaded to the phone) ----
+function snapshot(){
+  const vw=preview.videoWidth, vh=preview.videoHeight;
+  if(!vw||!vh){ log('No image to snapshot'); return; }
+  const c=document.createElement('canvas'); c.width=vw; c.height=vh;
+  try{ c.getContext('2d').drawImage(preview,0,0,vw,vh); }catch{ log('Snapshot error'); return; }
+  c.toBlob(b=>{ if(!b) return; const a=document.createElement('a');
+    a.href=URL.createObjectURL(b); a.download='phonecam_'+Date.now()+'.jpg';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  }, 'image/jpeg', 0.95);
+}
+
+// ---- battery status for the viewer (app device card) ----
+let batteryObj=null;
+async function sendBattery(){
+  try{ if(!batteryObj && navigator.getBattery){ batteryObj=await navigator.getBattery();
+    batteryObj.onlevelchange=()=>sendBattery(); batteryObj.onchargingchange=()=>sendBattery(); } }catch{}
+  if(!batteryObj || !ws || ws.readyState!==1) return;
+  ws.send(JSON.stringify({type:'meta', battery:{level:Math.round(batteryObj.level*100), charging:!!batteryObj.charging}}));
+}
+
+// ---- ICE servers from the server (default STUN; with TURN, internet mode works too) ----
+async function loadIce(){
+  try{ const r=await fetch('/ice',{cache:'no-store'});
+    if(r.ok){ const j=await r.json(); if(Array.isArray(j.iceServers)&&j.iceServers.length) iceServers=j.iceServers; }
+  }catch{}
+}
+
+// ---- touch gestures over the image: pinch-zoom, double-tap=lens, long-press=mirror ----
+function cycleLens(){ const chips=[...lensrow.querySelectorAll('.lens')]; if(chips.length<2) return;
+  let i=chips.findIndex(c=>c.classList.contains('on')); chips[(i+1+chips.length)%chips.length].click(); }
+let pinchDist0=0, pinchZoom0=1, lastTap=0, lpTimer=0, moved=false, startXY=null;
+function dist2(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
+preview.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){ pinchDist0=dist2(e.touches); pinchZoom0=absZoom; clearTimeout(lpTimer); return; }
+  if(e.touches.length===1){ moved=false; startXY=[e.touches[0].clientX,e.touches[0].clientY];
+    clearTimeout(lpTimer); lpTimer=setTimeout(()=>{ if(!moved){ toggleMirror(); navigator.vibrate&&navigator.vibrate(12); } },600); }
+},{passive:true});
+preview.addEventListener('touchmove',e=>{
+  if(e.touches.length===2 && pinchDist0>0){ e.preventDefault();
+    const z=Math.min(8,Math.max(zMin(), pinchZoom0*(dist2(e.touches)/pinchDist0)));
+    zoomEl.value=z.toFixed(2); setRange(zoomEl); applyZoom(z, false);     // live crop during pinch
+    if(typeof paintZoomThumb==='function') paintZoomThumb(zoomToFrac(z));  // edge thumb follows the pinch
+    return; }
+  if(startXY){ const dx=e.touches[0].clientX-startXY[0], dy=e.touches[0].clientY-startXY[1];
+    if(Math.hypot(dx,dy)>12){ moved=true; clearTimeout(lpTimer); } }
+},{passive:false});
+preview.addEventListener('touchend',e=>{
+  clearTimeout(lpTimer);
+  if(e.touches.length>=1){ pinchDist0=0; return; }   // a finger is still left from the pinch
+  if(pinchDist0){ pinchDist0=0; startXY=null; applyZoom(absZoom, true); return; }  // pinch end -> may switch lens
+  if(moved){ startXY=null; return; }
+  const now=performance.now();
+  if(now-lastTap<300){ lastTap=0; cycleLens(); }       // double tap -> switch lens
+  else { lastTap=now; if(focusEnabled && startXY) focusAt(startXY[0],startXY[1]); }
+  startXY=null;
+},{passive:true});
+
+// ===== custom vertical touch-zoom slider (#vztrack) — replaces the glitchy rotated native range =====
+const ZMAX=8;
+// perceptual (log) mapping between zMin()..ZMAX  <->  0..1 fraction up the track
+function zoomToFrac(z){ const lo=Math.log(zMin()), hi=Math.log(ZMAX);
+  return Math.min(1,Math.max(0,(Math.log(z)-lo)/(hi-lo))); }
+function fracToZoom(f){ const lo=Math.log(zMin()), hi=Math.log(ZMAX);
+  return Math.exp(lo+Math.min(1,Math.max(0,f))*(hi-lo)); }
+function fracFromEvent(clientY){ const r=vztrack.getBoundingClientRect();
+  return 1-Math.min(1,Math.max(0,(clientY-r.top)/r.height)); }   // bottom = 0 (1×), top = 1 (8×)
+function paintZoomThumb(f){ const pct=(f*100).toFixed(2)+'%';
+  vzfill.style.setProperty('--zp',pct); vzthumb.style.setProperty('--zp',pct); }
+function renderZoomTicks(){
+  vztrack.querySelectorAll('.vztick').forEach(n=>n.remove());      // tick mark at each physical lens base
+  (backLenses||[]).forEach(L=>{ if(L.base<zMin()-1e-3||L.base>ZMAX+1e-3) return;
+    const t=document.createElement('div'); t.className='vztick';
+    t.style.setProperty('--t',(zoomToFrac(L.base)*100).toFixed(2)+'%');
+    vztrack.appendChild(t); }); }
+function syncZoomThumb(){ paintZoomThumb(zoomToFrac(absZoom));
+  vztrack.setAttribute('aria-valuenow',(absZoom<10?absZoom.toFixed(1):Math.round(absZoom))); }
+
+let zoomRaf=0, zoomPendingAbs=null;
+function scheduleZoom(abs){ zoomPendingAbs=abs; if(zoomRaf) return;     // coalesce to one update / frame
+  zoomRaf=requestAnimationFrame(()=>{ zoomRaf=0; const a=zoomPendingAbs; zoomPendingAbs=null;
+    paintZoomThumb(zoomToFrac(a)); applyZoom(a,false); }); }            // live crop only (no lens switch)
+function ensureCanvasForDrag(){ if(running && !usingCanvas){ startCanvas(); preview.srcObject=canvasStream; } }
+function beginZoomDrag(){ zoomDragging=true; vztrack.classList.add('drag'); ensureCanvasForDrag(); }
+async function endZoomDrag(){ zoomDragging=false; vztrack.classList.remove('drag');
+  if(zoomRaf){ cancelAnimationFrame(zoomRaf); zoomRaf=0; }
+  const finalAbs=(zoomPendingAbs!=null)?zoomPendingAbs:absZoom; zoomPendingAbs=null;
+  paintZoomThumb(zoomToFrac(finalAbs));
+  await applyZoom(finalAbs,true);    // ONLY here may a lens switch / reacquire happen
+  await updatePipeline();            // reconcile the pipeline once (drops canvas cleanly if back at 1×)
+}
+let zoomPid=null;
+vztrack.addEventListener('pointerdown',e=>{ e.preventDefault();
+  zoomPid=e.pointerId; try{ vztrack.setPointerCapture(zoomPid); }catch{}
+  beginZoomDrag(); scheduleZoom(fracToZoom(fracFromEvent(e.clientY))); },{passive:false});
+vztrack.addEventListener('pointermove',e=>{ if(zoomPid!==e.pointerId) return; e.preventDefault();
+  scheduleZoom(fracToZoom(fracFromEvent(e.clientY))); },{passive:false});
+function zoomUp(e){ if(zoomPid!==e.pointerId) return; zoomPid=null;
+  try{ vztrack.releasePointerCapture(e.pointerId); }catch{} endZoomDrag(); }
+vztrack.addEventListener('pointerup',zoomUp);
+vztrack.addEventListener('pointercancel',zoomUp);
+vztrack.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});  // block iOS rubber-band
+vztrack.addEventListener('keydown',e=>{ let d=0;
+  if(e.key==='ArrowUp'||e.key==='ArrowRight') d=0.05;
+  else if(e.key==='ArrowDown'||e.key==='ArrowLeft') d=-0.05; else return;
+  e.preventDefault(); const f=Math.min(1,Math.max(0,zoomToFrac(absZoom)+d));
+  paintZoomThumb(f); applyZoom(fracToZoom(f),true); });
+syncZoomThumb(); renderZoomTicks();
+
+// ---- controls: zoom + lens are always visible; the rest lives in the collapsible "More" sheet ----
+function poke(){}                                   // controls no longer auto-hide; nothing to do
+// "More" sheet: open with ⚙, close with the ⚙ again / the X / the handle / a tap outside / Escape
+const sheetBackdrop=$('#sheetBackdrop');
+function openSheet(){ sheet.classList.add('open'); sheetBackdrop.hidden=false; moreBtn.classList.add('on'); ui.classList.add('sheet-open'); }
+function closeSheet(){ sheet.classList.remove('open'); sheetBackdrop.hidden=true; moreBtn.classList.remove('on'); ui.classList.remove('sheet-open'); }
+moreBtn.onclick=()=>{ sheet.classList.contains('open') ? closeSheet() : openSheet(); };
+$('#sheetHandle').onclick=closeSheet;
+$('#sheetClose').onclick=closeSheet;
+sheetBackdrop.onclick=closeSheet;
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && sheet.classList.contains('open')) closeSheet(); });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && running && (!camTrack||camTrack.readyState!=='live')) reacquire().catch(()=>{}); });
+
+// init
+document.getElementById('reloadBtn').onclick=()=>location.reload();
+loadSettings();
+// persisted state onto the UI
+resLbl.textContent=RES_LBL[RES[resIdx]];
+fpsLbl.textContent=FPS[fpsIdx]+' fps';
+brEl.value=Math.round(bitrateKbps/1000); brVal.textContent=(bitrateKbps/1000).toFixed(1)+' Mbps';
+preview.classList.toggle('mirror', wantMirror); mirrorBtn.classList.toggle('on', wantMirror);
+preview.classList.toggle('rot180', rot180); rotateBtn.classList.toggle('on', rot180);
+autoBrBtn.classList.toggle('on', autoBitrate);
+autostartBtn.classList.toggle('on', autostart);
+adjBrightEl.value=adjBright; adjContrastEl.value=adjContrast; adjSatEl.value=adjSat; adjWarmthEl.value=adjWarmth;
+[adjBrightEl,adjContrastEl,adjSatEl,adjWarmthEl].forEach(setRange);
+gridBtn.classList.toggle('on', gridOn); showGrid(gridOn);
+syncZoomUI(); setRange(brEl); setState('ready');
+loadIce();
+if(autostart){ setTimeout(()=>{ if(!running) start(); }, 400); }   // auto-start on load
+</script>
+</body>
+</html>

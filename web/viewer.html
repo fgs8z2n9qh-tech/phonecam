@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoneCam — viewer (OBS)</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  #v{position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+  #msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#5a6573;font:600 22px -apple-system,"Segoe UI",sans-serif;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+</style>
+</head>
+<body>
+  <video id="v" autoplay muted playsinline></video>
+  <div id="msg">Waiting for the phone's video…</div>
+<script>
+// VIEWER page: use this as the OBS Browser Source (http://<ip>:8080/viewer).
+// Does NOT call getUserMedia -> no HTTPS needed. Browser-native (HARDWARE) decode.
+const v = document.getElementById('v');
+const msg = document.getElementById('msg');
+let pc = null, ws = null;
+const KEY = new URLSearchParams(location.search).get('k') || '';
+let iceServers = [{urls:'stun:stun.l.google.com:19302'}];
+
+function show(t){ msg.textContent = t; msg.style.display = t ? 'flex' : 'none'; }
+async function loadIce(){
+  try{ const r = await fetch('/ice', {cache:'no-store'});
+    if(r.ok){ const j = await r.json(); if(Array.isArray(j.iceServers) && j.iceServers.length) iceServers = j.iceServers; }
+  }catch{}
+}
+
+function freshPC(){
+  try{ pc && pc.close(); }catch{}
+  pc = new RTCPeerConnection({ iceServers });
+  pc.onicecandidate = e => { if(e.candidate && ws && ws.readyState===1)
+    ws.send(JSON.stringify({type:'ice', candidate:e.candidate})); };
+  pc.ontrack = e => { v.srcObject = e.streams[0]; v.play().catch(()=>{}); show(''); };
+  pc.onconnectionstatechange = () => {
+    const st = pc.connectionState;
+    if(st==='connected') show('');
+    else if(st==='failed' || st==='disconnected'){ show('Reconnecting…'); }
+  };
+  return pc;
+}
+
+async function onOffer(sdp){
+  freshPC();
+  await pc.setRemoteDescription({type:'offer', sdp});
+  const ans = await pc.createAnswer();
+  await pc.setLocalDescription(ans);
+  if(ws && ws.readyState===1) ws.send(JSON.stringify({type:'answer', sdp:pc.localDescription.sdp}));
+}
+
+function connect(){
+  ws = new WebSocket(`ws://${location.host}/relay`);
+  ws.onopen = () => { ws.send(JSON.stringify({type:'hello', role:'viewer', key:KEY})); show('Waiting for the phone video…'); };
+  ws.onmessage = async e => {
+    let m; try{ m = JSON.parse(e.data); }catch{ return; }
+    if(m.type==='offer'){ try{ await onOffer(m.sdp); }catch(err){ console.error(err); } }
+    else if(m.type==='ice' && m.candidate){ try{ await pc.addIceCandidate(m.candidate); }catch{} }
+    else if(m.type==='peer-gone'){ show('The phone disconnected…'); try{ pc&&pc.close(); }catch{} pc=null; v.srcObject=null; }
+  };
+  ws.onclose = () => { show('Server…'); setTimeout(connect, 1500); };
+  ws.onerror = () => {};
+}
+loadIce().finally(connect);
+</script>
+</body>
+</html>
