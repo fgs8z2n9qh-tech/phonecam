@@ -39,7 +39,9 @@
   .ui>*{pointer-events:auto}
 
   .topbar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;
-    padding:calc(env(safe-area-inset-top,8px) + 8px) 14px 8px;transition:opacity .35s}
+    /* clear the notch/Dynamic Island AND the curved screen corners on both sides */
+    padding:calc(env(safe-area-inset-top,8px) + 8px) calc(env(safe-area-inset-right,0px) + 16px) 8px
+            calc(env(safe-area-inset-left,0px) + 16px);transition:opacity .35s}
   .pill{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
     background:rgba(0,0,0,.5);backdrop-filter:blur(8px);border:1px solid var(--glass-line);
     padding:6px 11px;border-radius:999px;color:#cdd7e1}
@@ -73,7 +75,8 @@
 
   /* ALWAYS-VISIBLE bottom dock: lens pills + Start + More (frequently used stuff stays fixed) */
   .botdock{position:absolute;left:0;right:0;bottom:0;z-index:31;display:flex;flex-direction:column;gap:8px;
-    padding:8px 12px calc(env(safe-area-inset-bottom,10px) + 8px);
+    padding:8px calc(env(safe-area-inset-right,0px) + 16px) calc(env(safe-area-inset-bottom,10px) + 8px)
+            calc(env(safe-area-inset-left,0px) + 16px);
     background:linear-gradient(to top, rgba(7,9,13,.82), rgba(7,9,13,0))}
   .botrow{display:flex;gap:8px;align-items:stretch}
   .botrow .start{flex:1;margin:0}
@@ -157,6 +160,7 @@
   /* the lens/resolution can't reach the requested fps -> show the real max in amber */
   .toggle.capped{background:rgba(210,153,34,.16);border-color:#d29922;color:#e3b341}
   .toggles + .toggles{margin-top:-2px}
+  .tbtn{font-size:13px;font-weight:700;min-height:40px}   /* telephoto factor segments: readable number */
 
   /* image adjustment sliders (baked into the SENT image via canvas) */
   .adjrow{display:flex;align-items:center;gap:8px}
@@ -190,7 +194,7 @@
     .zoomdock{ top:48%; padding:7px 5px; gap:6px; }
     .vztrack{ height:42vh; max-height:184px; width:40px; }
     .lensdock{ top:48%; }              /* keep the lens column centered on the zoom slider */
-    .botdock{ gap:6px; padding:6px 10px calc(env(safe-area-inset-bottom,6px) + 6px); }
+    .botdock{ gap:6px; padding:6px calc(env(safe-area-inset-right,0px) + 16px) calc(env(safe-area-inset-bottom,6px) + 6px) calc(env(safe-area-inset-left,0px) + 16px); }
     .lens{ padding:6px 11px; font-size:13px; }
     .start{ min-height:40px; font-size:15px; }
     .morebtn{ width:46px; }
@@ -265,6 +269,18 @@
         <input type="range" id="bitrate" min="2" max="20" step="1" value="8">
       </div>
 
+      <!-- telephoto zoom factor (varies by iPhone; Safari can't report it) — only shown if a tele lens exists -->
+      <div class="ctrl-row" id="teleRow" hidden>
+        <div class="ctrl-head"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 5V3M12 21v-2M5 12H3M21 12h-2"/></svg> Telephoto zoom <span class="val" id="teleVal">2×</span></div>
+        <div class="toggles" style="grid-template-columns:repeat(5,1fr)" id="teleSeg">
+          <button class="toggle tbtn" data-tb="2">2×</button>
+          <button class="toggle tbtn" data-tb="2.5">2.5×</button>
+          <button class="toggle tbtn" data-tb="3">3×</button>
+          <button class="toggle tbtn" data-tb="4">4×</button>
+          <button class="toggle tbtn" data-tb="5">5×</button>
+        </div>
+      </div>
+
       <div class="toggles">
         <button class="toggle" id="fpsBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 13l3.4-3"/></svg></span><span id="fpsLbl">30 fps</span></button>
         <button class="toggle" id="resBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H5a1 1 0 0 0-1 1v3M16 4h3a1 1 0 0 1 1 1v3M16 20h3a1 1 0 0 0 1-1v-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg></span><span id="resLbl">720p</span></button>
@@ -326,7 +342,9 @@ let hideT=0;
 let rot180=false, autoBitrate=false, autostart=false, focusEnabled=false, wantMirror=false;
 // ---- dynamic lens (iOS-style): the zoom factor picks the physical lens, digital crop fills the gaps ----
 let backLenses=[], curBase=1, absZoom=1, autoLens=true;
-const ULTRA_BASE=0.5, WIDE_BASE=1, TELE_BASE=2;   // assumed lens zoom factors (telephoto varies by model)
+const ULTRA_BASE=0.5, WIDE_BASE=1, TELE_BASE=2;   // ultra-wide + wide are fixed; telephoto varies by model
+// iOS Safari doesn't report a lens's optical zoom factor, so the telephoto factor is user-set (persisted).
+let teleBase=TELE_BASE;
 // ---- image adjustments (baked into the SENT image) + framing overlays (preview only) ----
 let adjBright=1, adjContrast=1, adjSat=1, adjWarmth=0, gridOn=false, levelOn=false, orientHandler=null;
 const KEY=new URLSearchParams(location.search).get('k')||'';     // relay token (anti-hijack)
@@ -337,7 +355,7 @@ const LS='phonecam.v1';
 function saveSettings(){ try{ localStorage.setItem(LS, JSON.stringify({
   resIdx, fpsIdx, bitrateKbps, facing,
   mirror:preview.classList.contains('mirror'), rot180, autoBitrate, autostart,
-  adjBright, adjContrast, adjSat, adjWarmth, gridOn })); }catch{} }
+  adjBright, adjContrast, adjSat, adjWarmth, gridOn, teleBase })); }catch{} }
 function loadSettings(){ try{
   const s=JSON.parse(localStorage.getItem(LS)||'{}');
   if(Number.isInteger(s.resIdx)&&s.resIdx>=0&&s.resIdx<RES.length) resIdx=s.resIdx;
@@ -352,6 +370,7 @@ function loadSettings(){ try{
   adjBright=clamp(s.adjBright,0.5,1.6,1); adjContrast=clamp(s.adjContrast,0.5,1.6,1);
   adjSat=clamp(s.adjSat,0,2,1); adjWarmth=clamp(s.adjWarmth,-1,1,0);
   if(typeof s.gridOn==='boolean') gridOn=s.gridOn;
+  if([2,2.5,3,4,5].includes(s.teleBase)) teleBase=s.teleBase;
 }catch{} }
 
 function log(m){ logEl.textContent=m; }
@@ -595,6 +614,28 @@ async function reacquire(switchCam=false){
   } finally { reacquiring=false; }
 }
 
+// ---- telephoto factor (iOS Safari can't report it, so the user sets it; persisted) ----
+function fmtx(v){ return (v%1 ? v.toFixed(1) : v) + '×'; }
+function updateTeleRow(hasTele){
+  const row=$('#teleRow'); if(!row) return;
+  row.hidden = !hasTele;
+  $('#teleVal').textContent = fmtx(teleBase);
+  document.querySelectorAll('#teleSeg .tbtn').forEach(b=>
+    b.classList.toggle('on', Math.abs(parseFloat(b.dataset.tb)-teleBase)<1e-3));
+}
+function applyTeleBase(v){
+  if(v===teleBase) return;
+  const teleL=(backLenses||[]).find(L=>L.name==='tele');
+  const onTele = teleL && Math.abs(curBase-teleL.base)<1e-3;
+  teleBase=v; saveSettings();
+  if(teleL) teleL.base=v;
+  if(onTele){ curBase=v; absZoom=Math.max(zMin(), Math.min(ZMAX, v*Math.max(1,zoom))); }  // keep framing, fix the shown zoom
+  updateTeleRow(!!teleL);
+  syncZoomUI();                     // slider range + ticks follow the corrected lens factor
+  buildControls();                  // relabel the tele pill
+  if(onTele && running) applyZoom(absZoom, false);   // reflect the corrected crop
+}
+
 // ---- build the controls based on the camera's capabilities ----
 async function buildControls(){
   // lens chips from the available cameras
@@ -617,7 +658,7 @@ async function buildControls(){
       const l=(c.label||'').toLowerCase();
       const name = (l.includes('front')||l.includes('elöl')||l.includes('truedepth')) ? 'Front'
                  : l.includes('ultra') ? '0.5×'
-                 : l.includes('tele')  ? '2×'
+                 : l.includes('tele')  ? 'tele'
                  : (l.includes('back')||l.includes('rear')||l.includes('hát')) ? 'Back'
                  : null;
       if(!name) return;
@@ -625,11 +666,12 @@ async function buildControls(){
       if(!buckets[name] || (buckets[name].v && !virt)) buckets[name]={c, v:virt};
     });
     // build the back-lens list with assumed base zoom factors (for dynamic switching)
-    const baseFor={'0.5×':ULTRA_BASE,'Back':WIDE_BASE,'2×':TELE_BASE};
-    ['0.5×','Back','2×'].forEach(n=>{ const b=buckets[n]; if(b) backLenses.push({name:n, base:baseFor[n], deviceId:b.c.deviceId}); });
+    const baseFor={'0.5×':ULTRA_BASE,'Back':WIDE_BASE,'tele':teleBase};
+    ['0.5×','Back','tele'].forEach(n=>{ const b=buckets[n]; if(b) backLenses.push({name:n, base:baseFor[n], deviceId:b.c.deviceId}); });
     backLenses.sort((a,b)=>a.base-b.base);
-    const pillLbl={'0.5×':'0.5×','Back':'1×','2×':'2×'};
-    backLenses.forEach(L=> addChip(pillLbl[L.name], L.deviceId===curId, ()=>selectLens(L)) );
+    const pillLbl={'0.5×':'0.5×','Back':'1×'};
+    backLenses.forEach(L=> addChip(L.name==='tele'?fmtx(teleBase):pillLbl[L.name], L.deviceId===curId, ()=>selectLens(L)) );
+    updateTeleRow(backLenses.some(L=>L.name==='tele'));
     if(buckets['Front']){ const f=buckets['Front'];
       addChip('Front', facing==='user', ()=>{ deviceId=f.c.deviceId; facing='user'; curBase=1; absZoom=1; zoom=1; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); }); }
     autoLens = backLenses.length>1;   // auto-switch only makes sense with multiple back lenses
@@ -873,6 +915,9 @@ adjResetBtn.onclick=()=>{ poke(); adjBright=adjContrast=adjSat=1; adjWarmth=0;
 // NB: gridOv is an SVG -> element.hidden doesn't reflect to the attribute, use (set/remove)Attribute
 function showGrid(on){ if(on) gridOv.removeAttribute('hidden'); else gridOv.setAttribute('hidden',''); }
 gridBtn.onclick=()=>{ poke(); gridOn=!gridOn; gridBtn.classList.toggle('on',gridOn); showGrid(gridOn); saveSettings(); };
+document.querySelectorAll('#teleSeg .tbtn').forEach(b=>
+  b.onclick=()=>{ poke(); applyTeleBase(parseFloat(b.dataset.tb)); });
+updateTeleRow(false);   // hidden until a telephoto lens is detected
 
 // ---- framing: horizon level (deviceorientation; iOS needs a motion permission) ----
 function onOrient(e){ const roll=Math.max(-45,Math.min(45, e.gamma||0));
