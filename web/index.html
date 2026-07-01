@@ -110,8 +110,8 @@
   .sheet.open{transform:translateY(0)}
   /* while the More sheet is open, hide the quick controls (zoom + dock) so they don't sit
      under the backdrop (a tap on zoom would otherwise close the sheet instead of zooming) */
-  .zoomdock,.botdock{transition:opacity .2s}
-  .ui.sheet-open .zoomdock,.ui.sheet-open .botdock{opacity:0;pointer-events:none}
+  .zoomdock,.botdock,.lensdock{transition:opacity .2s}
+  .ui.sheet-open .zoomdock,.ui.sheet-open .botdock,.ui.sheet-open .lensdock{opacity:0;pointer-events:none}
   /* tap anywhere off the sheet closes it (sits between botdock z31 and sheet z33) */
   .sheet-backdrop{position:absolute;inset:0;z-index:32;background:rgba(0,0,0,.001)}
   .sheet-backdrop[hidden]{display:none}
@@ -126,10 +126,14 @@
   .sheet-close svg{width:18px;height:18px}
   .sheet-close:active{transform:scale(.92)}
 
-  .lensrow{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  /* lens pills live in a vertical column on the right edge, just left of the zoom slider */
+  .lensdock{position:absolute;top:46%;transform:translateY(-50%);z-index:31;display:flex;
+    right:calc(env(safe-area-inset-right,0px) + 72px)}
+  .lensrow{display:flex;flex-direction:column;gap:8px;align-items:stretch;
+    max-height:64vh;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .lensrow::-webkit-scrollbar{display:none}
-  .lens{flex:0 0 auto;padding:7px 13px;border-radius:999px;font-weight:650;font-size:13px;
-    background:var(--chip);border:1px solid var(--glass-line);color:var(--txt)}
+  .lens{flex:0 0 auto;padding:8px 14px;border-radius:999px;font-weight:650;font-size:13px;text-align:center;
+    background:rgba(0,0,0,.5);backdrop-filter:blur(8px);border:1px solid var(--glass-line);color:var(--txt)}
   .lens.on{background:var(--chip-on);border-color:var(--accent);color:var(--accent)}
 
   .ctrl-row{display:flex;flex-direction:column;gap:1px}
@@ -185,8 +189,8 @@
        top-right buttons and its bottom never reaches the lens pills / Stop dock */
     .zoomdock{ top:48%; padding:7px 5px; gap:6px; }
     .vztrack{ height:42vh; max-height:184px; width:40px; }
+    .lensdock{ top:48%; }              /* keep the lens column centered on the zoom slider */
     .botdock{ gap:6px; padding:6px 10px calc(env(safe-area-inset-bottom,6px) + 6px); }
-    .lensrow{ justify-content:center; }
     .lens{ padding:6px 11px; font-size:13px; }
     .start{ min-height:40px; font-size:15px; }
     .morebtn{ width:46px; }
@@ -239,9 +243,11 @@
       <input type="range" id="zoom" class="vzoom-native" min="1" max="8" step="0.1" value="1" aria-hidden="true" tabindex="-1">
     </div>
 
-    <!-- always-visible bottom dock: lens pills + Start + More -->
+    <!-- lens pills: vertical column on the right edge, beside the zoom slider -->
+    <div class="lensdock" id="lensdock"><div class="lensrow" id="lensrow"></div></div>
+
+    <!-- always-visible bottom dock: Start + More -->
     <div class="botdock" id="botdock">
-      <div class="lensrow" id="lensrow"></div>
       <div class="botrow">
         <button class="start" id="toggle">▶ Start</button>
         <button class="iconbtn morebtn" id="moreBtn" aria-label="More controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.6 7.6 0 0 0 .1-2l1.8-1.4-2-3.4-2.1.9a7.6 7.6 0 0 0-1.7-1l-.3-2.3H9.7l-.3 2.3a7.6 7.6 0 0 0-1.7 1l-2.1-.9-2 3.4L5.4 11a7.6 7.6 0 0 0 0 2l-1.8 1.4 2 3.4 2.1-.9a7.6 7.6 0 0 0 1.7 1l.3 2.3h4.6l.3-2.3a7.6 7.6 0 0 0 1.7-1l2.1.9 2-3.4z"/></svg></button>
