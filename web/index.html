@@ -464,6 +464,44 @@ function syncZoomUI(){ zoomEl.min=zMin(); zoomEl.value=absZoom; setRange(zoomEl)
   zoomVal.textContent=(absZoom<10?absZoom.toFixed(1):Math.round(absZoom))+'×';
   if(typeof renderZoomTicks==='function'){ renderZoomTicks(); syncZoomThumb(); } }
 
+// Seamless physical-lens switch (e.g. wide -> tele when zooming past 2×). The naïve path rebuilds the
+// canvas + captureStream and replaceTrack()s the sender -> the receiver goes black (renegotiation) AND
+// the new camera needs ~300ms to warm up. Instead we keep the SAME canvas/captureStream/canvasTrack
+// (sender track never changes) and only swap the camera feeding the canvas. While the new lens warms up
+// the draw loop keeps emitting the last frame (the <video> freezes on it after the old track stops), so
+// the switch reads as a brief hold that blends into the new lens — no black flash. iOS allows only one
+// camera at a time, so the old lens is released just before the new one opens. `abs` is unchanged across
+// the switch, so the digital crop (zoom = abs/base) stays framing-continuous.
+async function switchLensSeamless(L, abs){
+  if(!L) return false;
+  const targetZoom=Math.max(1, abs/L.base);
+  if(!usingCanvas){                                   // no live canvas to hold the frame -> old rebuild path
+    const pDev=deviceId,pBase=curBase,pZoom=zoom;
+    deviceId=L.deviceId; curBase=L.base; zoom=targetZoom;
+    const ok=await reacquire(true).catch(e=>{ log('reacquire: '+e.message); return false; });
+    if(!ok){ deviceId=pDev; curBase=pBase; zoom=pZoom; }
+    return ok;
+  }
+  if(reacquiring) return false; reacquiring=true;     // reuse the camera-restart guard (blocks the watchdog too)
+  const pDev=deviceId,pBase=curBase,pZoom=zoom, old=camStream;
+  try{
+    deviceId=L.deviceId; curBase=L.base; zoom=targetZoom;
+    if(old) old.getTracks().forEach(t=>t.stop());     // iOS: free the old lens; canvas freezes on its last frame
+    let fresh;
+    try{ fresh=await getStream(); }
+    catch(e){                                         // new lens failed -> roll identity back, reopen the old lens
+      log('lens switch: '+e.message);
+      deviceId=pDev; curBase=pBase; zoom=pZoom;
+      try{ fresh=await getStream(); }catch{ return false; }
+    }
+    if(!running){ fresh.getTracks().forEach(t=>t.stop()); return false; }   // stopped mid-switch -> don't resurrect
+    camStream=fresh; camTrack=fresh.getVideoTracks()[0]; wireCamTrack(camTrack);
+    srcVideo.srcObject=camStream; srcVideo.play().catch(()=>{});   // canvasTrack + sender stay put -> no black
+    await applySenderParams(); showBadge(); buildControls();
+    return true;
+  } finally { reacquiring=false; }
+}
+
 // absolute zoom: choose the lens (on release) + apply digital crop for the in-between factors
 async function applyZoom(abs, fromRelease){
   abs=Math.min(8, Math.max(zMin(), abs));
@@ -472,20 +510,16 @@ async function applyZoom(abs, fromRelease){
   if(fromRelease && running && autoLens && backLenses.length>1 && facing==='environment'){
     const L=lensForZoom(abs);
     if(L && L.deviceId!==deviceId){
-      const pDev=deviceId, pBase=curBase, pZoom=zoom;   // snapshot for rollback
-      deviceId=L.deviceId; curBase=L.base;
-      zoom=Math.max(1, abs/curBase);
-      const ok=await reacquire(true).catch(e=>{ log('reacquire: '+e.message); return false; });
-      if(!ok){ deviceId=pDev; curBase=pBase; zoom=pZoom; }  // lens didn't switch -> keep crop consistent with the live lens
-      return;                                  // reacquire rebuilt the pipeline + controls
+      await switchLensSeamless(L, abs);        // keeps the canvas/sender alive -> no black flash (rollback inside)
+      return;
     }
   }
   zoom=Math.max(1, abs/curBase);               // digital crop on the current lens
   if(running && needCanvas()!==usingCanvas) await updatePipeline();
 }
 function selectLens(L){                         // manual lens pill -> jump to that lens at its native zoom
-  deviceId=L.deviceId; facing='environment'; curBase=L.base; absZoom=L.base; zoom=1;
-  syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message));
+  facing='environment'; absZoom=L.base; syncZoomUI();
+  switchLensSeamless(L, L.base).catch(e=>log('reacquire: '+e.message));   // seamless if zoomed (canvas live), else rebuild
 }
 async function replaceTrackAll(track){
   if(!track) return;
