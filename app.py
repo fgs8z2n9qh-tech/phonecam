@@ -40,47 +40,58 @@ import obs_control                 # OBS browser-mode auto-config (obs-websocket
 import qrcode
 
 # ---- colors / style --------------------------------------------------------
-BG, PANEL, LINE, TXT, MUT = "#0e1116", "#161b22", "#222b36", "#e6edf3", "#8b97a6"
+BG, PANEL, LINE, TXT, MUT = "#0d1117", "#161b22", "#242c38", "#e6edf3", "#8b97a6"
 ACC, OK, WARN, BAD = "#2ea043", "#3fb950", "#d29922", "#f85149"
 INSET = "#0b0e13"
+ELEV = "#1c232d"   # slightly lifted surface (hover / inner rows)
 
 STYLE = f"""
 QMainWindow, QWidget {{ background:{BG}; color:{TXT};
   font-family:'Segoe UI',sans-serif; font-size:13px; }}
-QFrame#panel {{ background:{PANEL}; border:1px solid {LINE}; border-radius:14px; }}
-QFrame#qrcard, QFrame#devcard, QFrame#statcell {{ background:{INSET};
+QFrame#panel {{ background:{PANEL}; border:1px solid {LINE}; border-radius:16px; }}
+QFrame#qrcard {{ background:{INSET}; border:1px solid {LINE}; border-radius:14px; }}
+QFrame#steprow, QFrame#devcard, QFrame#statcell {{ background:{INSET};
   border:1px solid {LINE}; border-radius:12px; }}
+QFrame#steprow:hover {{ border-color:{ACC}; }}
 QLabel#preview {{ background:#000; border:1px solid {LINE}; border-radius:14px; color:{MUT};
   font-size:15px; }}
 QLabel#rec {{ background:rgba(0,0,0,.55); border-radius:8px; padding:3px 9px;
   font-size:12px; font-weight:700; color:#fff; }}
-QPushButton {{ background:{PANEL}; border:1px solid {LINE}; border-radius:9px;
-  padding:9px 12px; color:{TXT}; font-weight:600; }}
-QPushButton:hover {{ border-color:{ACC}; }}
+QPushButton {{ background:{PANEL}; border:1px solid {LINE}; border-radius:10px;
+  padding:9px 12px; color:{TXT}; font-weight:600; text-align:left; }}
+QPushButton:hover {{ border-color:{ACC}; background:{ELEV}; }}
+QPushButton:pressed {{ background:{INSET}; }}
+QPushButton#tool {{ text-align:center; padding:9px 6px; font-size:12px; }}
 QPushButton#primary {{ background:{ACC}; border:1px solid {OK}; color:#fff;
-  padding:11px; font-size:14px; border-radius:11px; }}
-QPushButton#primary:hover {{ background:{OK}; }}
+  padding:12px; font-size:14px; border-radius:12px; text-align:center; }}
+QPushButton#primary:hover {{ background:{OK}; border-color:{OK}; }}
 QPushButton#primary[running="true"] {{ background:#21262d; border-color:{BAD}; color:{BAD}; }}
-QPushButton#linkbtn {{ background:transparent; border:none; color:{MUT}; font-weight:600;
-  padding:2px 6px; }}
-QPushButton#linkbtn:hover {{ color:{TXT}; border:none; }}
-QComboBox {{ background:{PANEL}; border:1px solid {LINE}; border-radius:9px; padding:8px; }}
+QPushButton#primary[running="true"]:hover {{ background:#2a1618; }}
+QPushButton#copy {{ background:{PANEL}; border:1px solid {LINE}; border-radius:8px;
+  padding:5px 10px; color:{MUT}; font-size:11px; font-weight:600; text-align:center; }}
+QPushButton#copy:hover {{ border-color:{ACC}; color:{TXT}; background:{ELEV}; }}
+QPushButton#copy[done="true"] {{ color:{OK}; border-color:{OK}; }}
+QComboBox {{ background:{PANEL}; border:1px solid {LINE}; border-radius:10px; padding:8px 10px; }}
+QComboBox:hover {{ border-color:{ACC}; }}
+QComboBox::drop-down {{ border:none; width:22px; }}
 QComboBox QAbstractItemView {{ background:{PANEL}; border:1px solid {LINE};
-  selection-background-color:{ACC}; }}
+  border-radius:8px; padding:4px; selection-background-color:{ACC}; outline:none; }}
 QPlainTextEdit {{ background:{INSET}; border:1px solid {LINE}; border-radius:10px;
   color:{MUT}; font-family:Consolas,monospace; font-size:11px; padding:6px; }}
-QLabel#h1 {{ font-size:18px; font-weight:700; }}
+QLabel#h1 {{ font-size:19px; font-weight:800; letter-spacing:.2px; }}
 QLabel#sub {{ color:{MUT}; font-size:11px; }}
 QLabel#chip {{ background:{PANEL}; border:1px solid {LINE}; border-radius:999px;
-  padding:5px 12px; font-size:12px; font-weight:600; }}
-QLabel#chip[state="on"]   {{ background:rgba(63,185,80,.10);  border-color:rgba(63,185,80,.35); }}
-QLabel#chip[state="wait"] {{ background:rgba(210,153,34,.10); border-color:rgba(210,153,34,.35); }}
-QLabel#chip[state="bad"]  {{ background:rgba(248,81,73,.10);  border-color:rgba(248,81,73,.35); }}
-QLabel#section {{ color:{MUT}; font-size:11px; font-weight:700; letter-spacing:.6px; }}
-QLabel#url {{ color:{MUT}; font-family:Consolas,monospace; font-size:11px; }}
-QLabel#devlbl {{ color:{MUT}; font-size:11px; }}
-QLabel#statval {{ font-size:15px; font-weight:700; color:{TXT}; }}
-QLabel#statcap {{ font-size:10px; color:{MUT}; }}
+  padding:5px 13px; font-size:12px; font-weight:600; color:{MUT}; }}
+QLabel#chip[state="on"]   {{ background:rgba(63,185,80,.12);  border-color:rgba(63,185,80,.40); color:{TXT}; }}
+QLabel#chip[state="wait"] {{ background:rgba(210,153,34,.12); border-color:rgba(210,153,34,.40); color:{TXT}; }}
+QLabel#chip[state="bad"]  {{ background:rgba(248,81,73,.12);  border-color:rgba(248,81,73,.40); color:{TXT}; }}
+QLabel#section {{ color:{MUT}; font-size:10.5px; font-weight:700; letter-spacing:1.2px; }}
+QLabel#badge {{ background:{ACC}; color:#fff; font-size:12px; font-weight:800;
+  border-radius:12px; min-width:24px; max-width:24px; min-height:24px; max-height:24px; }}
+QLabel#badge[done="wait"] {{ background:{LINE}; color:{MUT}; }}
+QLabel#steptitle {{ font-size:12.5px; font-weight:700; color:{TXT}; }}
+QLabel#stepurl {{ color:{MUT}; font-family:Consolas,monospace; font-size:10.5px; }}
+QLabel#qrcap {{ color:{MUT}; font-size:11px; }}
 QFrame#sep {{ background:{LINE}; max-height:1px; min-height:1px; border:none; }}
 """
 
@@ -173,7 +184,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("PhoneCam — receiver")
-        self.resize(1000, 560)
+        self.resize(1000, 680)
         self.worker = None
         self._last_emit = 0.0
         self._info = {}
@@ -222,36 +233,72 @@ class MainWindow(QMainWindow):
         lbl.setObjectName("section")
         return lbl
 
-    def _statcell(self, caption):
-        cell = QFrame()
-        cell.setObjectName("statcell")
-        v = QVBoxLayout(cell)
-        v.setContentsMargins(8, 7, 8, 7)
-        v.setSpacing(1)
-        val = QLabel("—")
-        val.setObjectName("statval")
-        cap = QLabel(caption)
-        cap.setObjectName("statcap")
-        v.addWidget(val)
-        v.addWidget(cap)
-        return cell, val, cap
+    def _step_row(self, index, title):
+        """A numbered setup step: badge · title/url · Copy button.
+        Returns (frame, badge, url_label, copy_button) so on_ready can fill the URL in."""
+        row = QFrame()
+        row.setObjectName("steprow")
+        h = QHBoxLayout(row)
+        h.setContentsMargins(10, 9, 10, 9)
+        h.setSpacing(10)
+        badge = QLabel(str(index))
+        badge.setObjectName("badge")
+        badge.setAlignment(Qt.AlignCenter)
+        h.addWidget(badge, 0, Qt.AlignTop)
+        col = QVBoxLayout()
+        col.setSpacing(1)
+        t = QLabel(title)
+        t.setObjectName("steptitle")
+        t.setWordWrap(True)
+        url = QLabel("—")
+        url.setObjectName("stepurl")
+        url.setWordWrap(True)
+        url.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        col.addWidget(t)
+        col.addWidget(url)
+        h.addLayout(col, 1)
+        btn = QPushButton("Copy")
+        btn.setObjectName("copy")
+        btn.setCursor(Qt.PointingHandCursor)
+        h.addWidget(btn, 0, Qt.AlignVCenter)
+        return row, badge, url, btn
+
+    def _copy(self, text, btn):
+        if not text:
+            return
+        QApplication.clipboard().setText(text)
+        btn.setText("Copied ✓")
+        btn.setProperty("done", "true")
+        self._restyle(btn)
+
+        def _reset():
+            btn.setText("Copy")
+            btn.setProperty("done", "false")
+            self._restyle(btn)
+        QTimer.singleShot(1400, _reset)
 
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(18, 16, 18, 16)
-        root.setSpacing(14)
+        root.setContentsMargins(18, 15, 18, 16)
+        root.setSpacing(13)
 
-        # ---- header: title + subtitle | status chips ----
+        # ---- header: icon mark + title/subtitle | status chips ----
         self._head = QWidget()
         head = QHBoxLayout(self._head)
-        head.setContentsMargins(0, 0, 0, 0)
+        head.setContentsMargins(2, 0, 2, 0)
+        head.setSpacing(11)
+        mark = QLabel()
+        icon_path = os.path.join(HERE, "assets", "icon.ico")
+        if os.path.exists(icon_path):
+            mark.setPixmap(QIcon(icon_path).pixmap(30, 30))
+        head.addWidget(mark, 0, Qt.AlignVCenter)
         titlebox = QVBoxLayout()
         titlebox.setSpacing(0)
-        title = QLabel("📱 PhoneCam")
+        title = QLabel("PhoneCam")
         title.setObjectName("h1")
-        sub = QLabel("Phone → virtual webcam")
+        sub = QLabel("Use your phone as a wireless webcam")
         sub.setObjectName("sub")
         titlebox.addWidget(title)
         titlebox.addWidget(sub)
@@ -262,8 +309,9 @@ class MainWindow(QMainWindow):
         self.dot_vcam = Dot("Camera")
         for d in (self.dot_server, self.dot_phone, self.dot_vcam):
             head.addWidget(d)
-            head.addSpacing(8)
         root.addWidget(self._head)
+        hsep = QFrame(); hsep.setObjectName("sep")
+        root.addWidget(hsep)
 
         # ---- middle: preview | right panel ----
         mid = QHBoxLayout()
@@ -280,48 +328,45 @@ class MainWindow(QMainWindow):
 
         side = self._side = QFrame()
         side.setObjectName("panel")
-        side.setFixedWidth(320)
+        side.setFixedWidth(336)
         sl = QVBoxLayout(side)
-        sl.setContentsMargins(14, 14, 14, 14)
-        sl.setSpacing(9)
+        sl.setContentsMargins(16, 15, 16, 15)
+        sl.setSpacing(10)
 
-        # PHONE
-        sl.addWidget(self._section("PHONE"))
+        # CONNECT YOUR PHONE
+        sl.addWidget(self._section("CONNECT YOUR PHONE"))
         qrcard = QFrame()
         qrcard.setObjectName("qrcard")
         qv = QVBoxLayout(qrcard)
-        qv.setContentsMargins(12, 12, 12, 12)
+        qv.setContentsMargins(12, 12, 12, 10)
+        qv.setSpacing(7)
         self.qr = QLabel()
         self.qr.setAlignment(Qt.AlignCenter)
-        self.qr.setFixedHeight(150)
+        self.qr.setFixedHeight(132)
         qv.addWidget(self.qr)
+        self.qr_cap = QLabel("Scan with the iPhone camera — opens in Safari")
+        self.qr_cap.setObjectName("qrcap")
+        self.qr_cap.setAlignment(Qt.AlignCenter)
+        qv.addWidget(self.qr_cap)
         sl.addWidget(qrcard)
 
-        devcard = QFrame()
-        devcard.setObjectName("devcard")
-        dv = QVBoxLayout(devcard)
-        dv.setContentsMargins(12, 10, 12, 10)
-        dv.setSpacing(4)
-        self.url_cam = QLabel("—")
-        self.url_cam.setObjectName("url")
-        self.url_cam.setWordWrap(True)
-        self.url_cam.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.url_cert = QLabel("")
-        self.url_cert.setObjectName("url")
-        self.url_cert.setWordWrap(True)
-        self.url_cert.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.url_viewer = QLabel("")
-        self.url_viewer.setObjectName("url")
-        self.url_viewer.setWordWrap(True)
-        self.url_viewer.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        dv.addWidget(self.url_cam)
-        dv.addWidget(self.url_viewer)
-        dv.addWidget(self.url_cert)
-        sl.addWidget(devcard)
+        # numbered setup steps (URLs filled in by on_ready)
+        row1, self.badge_cert, self.url_cert, self.btn_copy_cert = self._step_row(1, "Install certificate")
+        row2, self.badge_cam, self.url_cam, self.btn_copy_cam = self._step_row(2, "Open the camera")
+        self.btn_copy_cert.clicked.connect(lambda: self._copy(self._urls.get("cert", ""), self.btn_copy_cert))
+        self.btn_copy_cam.clicked.connect(lambda: self._copy(self._urls.get("cam", ""), self.btn_copy_cam))
+        self._urls = {"cert": "", "cam": "", "viewer": ""}
+        sl.addWidget(row1)
+        sl.addWidget(row2)
+        note = QLabel("Step 1 is only needed the first time you connect a phone.")
+        note.setObjectName("qrcap")
+        note.setWordWrap(True)
+        note.setContentsMargins(2, 0, 2, 0)
+        sl.addWidget(note)
 
         # VIRTUAL CAMERA
-        sl.addSpacing(4)
-        sl.addWidget(self._section("VIRTUAL CAMERA"))
+        sl.addSpacing(2)
+        sl.addWidget(self._section("VIRTUAL CAMERA  ·  DISCORD / ZOOM"))
         self.backend = QComboBox()
         self.backend.addItem("Auto (whatever is available)", "")
         self.backend.addItem("Unity Capture", "unitycapture")
@@ -330,25 +375,29 @@ class MainWindow(QMainWindow):
         self.backend.currentIndexChanged.connect(self._backend_changed)
         sl.addWidget(self.backend)
 
-        self.btn_start = QPushButton("▶ Start")
+        self.btn_start = QPushButton("▶  Start")
         self.btn_start.setObjectName("primary")
+        self.btn_start.setCursor(Qt.PointingHandCursor)
         self.btn_start.clicked.connect(self.toggle_server)
         sl.addWidget(self.btn_start)
 
         sl.addStretch()
-        sep = QFrame()
-        sep.setObjectName("sep")
-        sl.addWidget(sep)
-
-        for label, fn in (
-            ("🎬 OBS browser mode (better fps)", self.setup_obs_clicked),
-            ("🎥 Install Unity Capture", lambda: self._run_ps("install_unitycapture.ps1")),
-            ("🔑 Regenerate certificate", self.regen_cert),
-            ("⛶ Fullscreen (F11)", self.toggle_fullscreen),
-        ):
+        sl.addWidget(self._section("SETUP & TOOLS"))
+        tools = QGridLayout()
+        tools.setHorizontalSpacing(9)
+        tools.setVerticalSpacing(9)
+        for i, (label, fn) in enumerate((
+            ("🎬  Set up OBS", self.setup_obs_clicked),
+            ("🎥  Unity Capture", lambda: self._run_ps("install_unitycapture.ps1")),
+            ("🔑  New certificate", self.regen_cert),
+            ("⛶  Fullscreen", self.toggle_fullscreen),
+        )):
             b = QPushButton(label)
+            b.setObjectName("tool")
+            b.setCursor(Qt.PointingHandCursor)
             b.clicked.connect(fn)
-            sl.addWidget(b)
+            tools.addWidget(b, i // 2, i % 2)
+        sl.addLayout(tools)
 
         mid.addWidget(side)
         root.addLayout(mid, 1)
@@ -516,10 +565,17 @@ class MainWindow(QMainWindow):
     def on_ready(self, info):
         self._info = info
         cam_url = info.get("cam_url", "")
-        self.url_cam.setText("2. Camera (scan the QR or open):  " + cam_url)
-        self.url_viewer.setText("OBS source:  " + info.get("viewer_url", ""))
-        self.url_cert.setText(("1. Setup — open this on the phone first:  " + info["cert_url"]) if info.get("cert_url")
-                              else "Certificate: (no CA yet)")
+        cert_url = info.get("cert_url", "")
+        self._urls = {"cert": cert_url or "", "cam": cam_url or "", "viewer": info.get("viewer_url", "")}
+        self.url_cam.setText(cam_url or "—")
+        if cert_url:
+            self.url_cert.setText(cert_url)
+            self.badge_cert.setProperty("done", "false")
+        else:
+            self.url_cert.setText("generating certificate…")
+            self.badge_cert.setProperty("done", "wait")
+        self._restyle(self.badge_cert)
+        self.btn_copy_cert.setEnabled(bool(cert_url))
         if cam_url:
             img = qrcode.make(cam_url)
             buf = io.BytesIO()
