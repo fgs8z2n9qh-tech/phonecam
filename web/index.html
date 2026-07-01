@@ -304,7 +304,7 @@ const preview=$('#preview'), srcVideo=$('#src'), dot=$('#dot'), statusEl=$('#sta
       gridOv=$('#gridOv'), levelOv=$('#levelOv'), levelLine=$('#levelLine');
 
 // ---- state ----
-let ws=null, running=false, wakeLock=null;
+let ws=null, running=false, wakeLock=null, reconnectTimer=null;
 let viewers=new Map();                       // vid -> {pc, sender}  (multiple viewers: app preview + OBS)
 let camStream=null, camTrack=null;          // raw camera
 let usingCanvas=false, canvas=null, cctx=null, canvasStream=null, canvasTrack=null, rafId=0;
@@ -472,9 +472,11 @@ async function applyZoom(abs, fromRelease){
   if(fromRelease && running && autoLens && backLenses.length>1 && facing==='environment'){
     const L=lensForZoom(abs);
     if(L && L.deviceId!==deviceId){
+      const pDev=deviceId, pBase=curBase, pZoom=zoom;   // snapshot for rollback
       deviceId=L.deviceId; curBase=L.base;
       zoom=Math.max(1, abs/curBase);
-      await reacquire(true).catch(e=>log('reacquire: '+e.message));
+      const ok=await reacquire(true).catch(e=>{ log('reacquire: '+e.message); return false; });
+      if(!ok){ deviceId=pDev; curBase=pBase; zoom=pZoom; }  // lens didn't switch -> keep crop consistent with the live lens
       return;                                  // reacquire rebuilt the pipeline + controls
     }
   }
@@ -510,7 +512,9 @@ async function applyParamsTo(sndr){
 // keep sending black frames while the pill still reads LIVE. Watch it and re-acquire automatically.
 function wireCamTrack(t){
   if(!t) return;
-  t.onended=()=>{ if(running){ log('Camera interrupted — recovering…'); reacquire().catch(()=>{}); } };
+  // Defer the retry ~800ms: if the OS still holds the camera (call/lock not finished), the fresh
+  // track fires 'ended' again immediately — without this delay that becomes a tight reacquire loop.
+  t.onended=()=>{ if(running){ log('Camera interrupted — recovering…'); setTimeout(()=>{ if(running) reacquire().catch(()=>{}); }, 800); } };
 }
 
 // ---- re-request camera/resolution/fps while live ----
@@ -532,6 +536,7 @@ async function reacquire(switchCam=false){
     showBadge(); reflectActualFps();
     return false;                                // the caller can roll back the fps/resolution change
   }
+  if(!running){ fresh.getTracks().forEach(t=>t.stop()); return false; }  // user hit Stop mid-await -> don't resurrect the camera
   if(!switchCam && old) old.getTracks().forEach(t=>t.stop());  // success -> NOW release the old one
   camStream=fresh; camTrack=fresh.getVideoTracks()[0]; wireCamTrack(camTrack);
   if(usingCanvas){
@@ -714,6 +719,10 @@ async function start(){
 function sentTrack(){ return usingCanvas?canvasTrack:camTrack; }
 
 function connect(){
+  // single-flight: drop any pending retry timer and fully detach the previous socket so a flapping
+  // network can't stack overlapping sockets/timers (which the relay would see as duplicate senders).
+  if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer=null; }
+  if(ws){ try{ ws.onopen=ws.onmessage=ws.onclose=ws.onerror=null; ws.close(); }catch{} }
   setState('connecting…','wait');
   closeAllViewers();
   ws=new WebSocket(`wss://${location.host}/relay`);     // multi-viewer signaling relay
@@ -730,7 +739,7 @@ function connect(){
     else if(m.type==='superseded'){ setState('replaced','bad');
       log('Another phone connected — this one stopped.'); stop(); }
   };
-  ws.onclose=()=>{ if(running){ setState('retrying…','wait'); setTimeout(()=>{ if(running) connect(); },1200); } };
+  ws.onclose=()=>{ if(running){ setState('retrying…','wait'); reconnectTimer=setTimeout(()=>{ reconnectTimer=null; if(running) connect(); },1200); } };
   ws.onerror=()=>log('WebSocket error — is the server running?');
 }
 

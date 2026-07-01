@@ -322,129 +322,6 @@ async def vcam_bridge(http_port, sink, hooks, stop_event):
         await asyncio.sleep(1.5)
 
 
-def munge_answer_bitrate(sdp, kbps):
-    """Adds a b=AS / b=TIAS bandwidth ceiling to the video section -> the phone may send up to this.
-    iOS Safari (H.264) respects b=AS; this is the main bitrate control on the sender side."""
-    out, in_video = [], False
-    for line in sdp.splitlines():
-        if line.startswith("m="):
-            in_video = line.startswith("m=video")
-            out.append(line)
-            continue
-        if in_video and line.startswith("c="):
-            out.append(line)
-            out.append("b=AS:%d" % kbps)
-            out.append("b=TIAS:%d" % (kbps * 1000))
-            continue
-        out.append(line)
-    return "\r\n".join(out) + "\r\n"
-
-
-async def stats_loop(pc, hooks):
-    """Every 2 s: (estimated) bitrate + packet loss from getStats (log + GUI hook).
-    aiortc doesn't track bytesReceived, so we estimate the bitrate from the packet count."""
-    loop = asyncio.get_running_loop()
-    prev_lost = prev_recv = None       # None = no baseline sample yet
-    last = loop.time()
-    while pc.connectionState not in ("closed", "failed"):
-        await asyncio.sleep(2.0)
-        now = loop.time()
-        dt = max(1e-3, now - last)
-        last = now
-        try:
-            report = await pc.getStats()
-        except Exception as e:
-            log.debug("getStats error: %s", e)
-            continue
-        for s in report.values():
-            if getattr(s, "type", "") != "inbound-rtp" or getattr(s, "kind", "video") != "video":
-                continue
-            lost = getattr(s, "packetsLost", 0) or 0
-            recv = getattr(s, "packetsReceived", 0) or 0
-            if prev_recv is None:        # first sample: just baseline, don't emit (no spike)
-                prev_lost, prev_recv = lost, recv
-                break
-            d_lost = max(0, lost - prev_lost)
-            d_recv = max(0, recv - prev_recv)
-            kbps = d_recv * 1200 * 8 / 1000.0 / dt          # ~1200 B/packet estimate
-            loss = (100.0 * d_lost / (d_lost + d_recv)) if (d_lost + d_recv) else 0.0
-            prev_lost, prev_recv = lost, recv
-            log.info("STATS  ~bitrate=%.0f kbps  loss=%.1f%%", kbps, loss)
-            if hooks and hooks.on_stats:
-                try:
-                    hooks.on_stats({"bitrate": int(kbps), "loss": loss})
-                except Exception:
-                    pass
-            break
-
-
-async def ws_handler(request):
-    if not _origin_ok(request):
-        log.warning("WS: cross-origin upgrade rejected (%s, origin=%s)", request.remote, request.headers.get("Origin"))
-        return web.Response(status=403, text="forbidden")
-    ws = web.WebSocketResponse(heartbeat=20)
-    await ws.prepare(request)
-    sink = request.app["sink"]
-    hooks = request.app.get("hooks")
-    max_kbps = request.app.get("max_kbps", MAX_KBPS)
-    loop = asyncio.get_event_loop()
-
-    pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=[]))  # LAN: host candidates
-    request.app["pcs"].add(pc)
-    peer = request.remote
-    log.info("WS connection: %s", peer)
-    if hooks and hooks.on_state:
-        hooks.on_state(peer, "connecting")
-
-    @pc.on("connectionstatechange")
-    async def on_state():
-        log.info("PC state (%s): %s", peer, pc.connectionState)
-        if hooks and hooks.on_state:
-            hooks.on_state(peer, pc.connectionState)
-        if pc.connectionState in ("failed", "closed"):
-            await pc.close()
-            request.app["pcs"].discard(pc)
-
-    @pc.on("track")
-    def on_track(track):
-        log.info("Track arrived (%s): %s", peer, track.kind)
-        if track.kind == "video":
-            asyncio.ensure_future(consume_video(track, sink, loop, hooks))
-
-    stats_future = asyncio.ensure_future(stats_loop(pc, hooks))
-    try:
-        async for msg in ws:
-            if msg.type != WSMsgType.TEXT:
-                if msg.type == WSMsgType.ERROR:
-                    break
-                continue
-            data = json.loads(msg.data)
-            t = data.get("type")
-            if t == "offer":
-                await pc.setRemoteDescription(RTCSessionDescription(sdp=data["sdp"], type="offer"))
-                answer = await pc.createAnswer()
-                await pc.setLocalDescription(answer)  # aiortc: non-trickle, ICE gathering done
-                sdp = munge_answer_bitrate(pc.localDescription.sdp, max_kbps)  # b=AS ceiling
-                await ws.send_json({"type": "answer", "sdp": sdp})
-            elif t == "ice":
-                c = data.get("candidate") or {}
-                cstr = c.get("candidate")
-                if cstr:
-                    try:
-                        cand = candidate_from_sdp(cstr.split(":", 1)[1] if cstr.startswith("candidate:") else cstr)
-                        cand.sdpMid = c.get("sdpMid")
-                        cand.sdpMLineIndex = c.get("sdpMLineIndex")
-                        await pc.addIceCandidate(cand)
-                    except Exception as e:
-                        log.debug("ice candidate skipped: %s", e)
-    finally:
-        stats_future.cancel()
-        await pc.close()
-        request.app["pcs"].discard(pc)
-        log.info("WS closed: %s", peer)
-    return ws
-
-
 _NOCACHE = {"Cache-Control": "no-store, must-revalidate"}  # the phone always gets the fresh page
 
 
@@ -831,7 +708,6 @@ async def serve(args, ssl_ctx, ip, hooks=None, stop_event=None):
     app.router.add_get("/health", health)
     app.router.add_get("/ice", ice_config)         # ICE servers (STUN/TURN)
     app.router.add_get("/manifest.webmanifest", manifest_handler)  # PWA
-    app.router.add_get("/ws", ws_handler)          # legacy: aiortc built-in receiver
     app.router.add_get("/viewer", viewer_index)
     app.router.add_get("/relay", relay_handler)    # OBS path: browser-viewer signaling
     app.on_shutdown.append(on_shutdown)
