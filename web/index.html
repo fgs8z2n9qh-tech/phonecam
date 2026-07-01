@@ -181,8 +181,10 @@
   /* Phone in LANDSCAPE: keep the same dock layout, just more compact. The vertical
      zoom uses the (now tall) right edge; the bottom dock + sheet stay at the bottom. */
   @media (orientation: landscape) and (max-height: 560px){
-    .zoomdock{ top:44%; padding:7px 5px; }
-    .vztrack{ height:62vh; max-height:none; width:40px; }
+    /* keep the zoom dock in the middle band so its value chip never rides up under the
+       top-right buttons and its bottom never reaches the lens pills / Stop dock */
+    .zoomdock{ top:48%; padding:7px 5px; gap:6px; }
+    .vztrack{ height:42vh; max-height:184px; width:40px; }
     .botdock{ gap:6px; padding:6px 10px calc(env(safe-area-inset-bottom,6px) + 6px); }
     .lensrow{ justify-content:center; }
     .lens{ padding:6px 11px; font-size:13px; }
