@@ -126,6 +126,8 @@
   .sec{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:800;letter-spacing:1.4px;
     text-transform:uppercase;color:var(--muted);margin:4px 2px -3px}
   .sec::after{content:'';flex:1;height:1px;background:var(--glass-line)}
+  .camline{font-size:11px;color:var(--muted);text-align:center;margin:-2px 0}
+  .camline[hidden]{display:none}
   /* while the More sheet is open, hide the quick controls (zoom + dock) so they don't sit
      under the backdrop (a tap on zoom would otherwise close the sheet instead of zooming) */
   .zoomdock,.botdock,.lensdock{transition:opacity .2s}
@@ -313,6 +315,8 @@
         </div>
 
         <div class="sec">Camera</div>
+        <!-- which device iOS actually handed over (macro needs the virtual Triple/Dual-Wide) -->
+        <div class="camline" id="camLine" hidden></div>
         <!-- telephoto zoom factor (varies by iPhone; Safari can't report it) — only shown if a tele lens exists -->
         <div class="ctrl-row" id="teleRow" hidden>
           <div class="ctrl-head"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 5V3M12 21v-2M5 12H3M21 12h-2"/></svg> Telephoto zoom <span class="val" id="teleVal">2×</span></div>
@@ -742,13 +746,12 @@ async function buildControls(){
       // back camera whose constituents include the ultra-wide (Triple / Dual-Wide). Pinning the
       // bare physical wide lens kills it — so the 1× slot prefers that virtual camera, while
       // every other slot still prefers the physical lens.
-      const macroVirt = /triple|tripla/.test(l) || (/dual|dupla/.test(l) && /wide|széles/.test(l));
-      const rank = name==='Back' ? (macroVirt?2 : !virt?1 : 0) : (!virt?1:0);
+      const rank = name==='Back' ? (isMacroLabel(l)?2 : !virt?1 : 0) : (!virt?1:0);
       if(!buckets[name] || rank>buckets[name].r) buckets[name]={c, v:virt, r:rank};
     });
     // build the back-lens list with assumed base zoom factors (for dynamic switching)
     const baseFor={'0.5×':ULTRA_BASE,'Back':WIDE_BASE,'tele':teleBase};
-    ['0.5×','Back','tele'].forEach(n=>{ const b=buckets[n]; if(b) backLenses.push({name:n, base:baseFor[n], deviceId:b.c.deviceId}); });
+    ['0.5×','Back','tele'].forEach(n=>{ const b=buckets[n]; if(b) backLenses.push({name:n, base:baseFor[n], deviceId:b.c.deviceId, macro:b.r===2}); });
     backLenses.sort((a,b)=>a.base-b.base);
     const pillLbl={'0.5×':'0.5×','Back':'1×'};
     backLenses.forEach(L=> addChip(L.name==='tele'?fmtx(teleBase):pillLbl[L.name], L.deviceId===curId, ()=>selectLens(L)) );
@@ -768,7 +771,30 @@ async function buildControls(){
     (Array.isArray(caps.focusMode) && (caps.focusMode.includes('single-shot')||caps.focusMode.includes('continuous')||caps.focusMode.includes('manual')))));
   focusBtn.disabled = !focusable;
   if(!focusable){ focusEnabled=false; focusBtn.classList.remove('on'); }
+  const curL=(cams.find(c=>c.deviceId===curId)||{}).label||'';
+  $('#camLine').hidden=!curL;
+  $('#camLine').textContent=curL?('Active camera: '+curL):'';
   reflectActualFps();
+}
+
+// iOS AUTO-MACRO needs the VIRTUAL back camera (Triple / Dual-Wide). Safari's facingMode default
+// picks by fitness (requested res/fps), so with 60fps or 1080p saved it can quietly hand over the
+// bare physical wide lens — which never macro-switches. Right after start, check what we actually
+// got and hop onto the macro-capable virtual camera if we're on a non-macro back camera.
+function isMacroLabel(l){ l=(l||'').toLowerCase();
+  return /triple|tripla/.test(l) || (/dual|dupla/.test(l) && /wide|széles/.test(l)); }
+async function ensureMacroCam(){
+  if(!running || facing!=='environment' || deviceId) return;   // user already pinned a lens
+  const back=(backLenses||[]).find(L=>L.name==='Back');
+  if(!back || !back.macro) return;                             // no macro-capable camera on this phone
+  let cur=null; try{ cur=camTrack.getSettings().deviceId; }catch{}
+  if(!cur || cur===back.deviceId) return;
+  let cams=[]; try{ cams=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'); }catch{}
+  if(isMacroLabel((cams.find(c=>c.deviceId===cur)||{}).label)) return;   // already macro-capable
+  deviceId=back.deviceId; curBase=back.base;
+  log('Switching to the macro-capable camera…');
+  const ok=await reacquire(true).catch(()=>false);
+  if(!ok){ deviceId=null; curBase=1; scheduleCamRecovery(true); }
 }
 
 // ---- tap-to-focus: focuses on the touched point (where the camera supports it) ----
@@ -888,6 +914,7 @@ async function start(){
   reloadBtn.hidden=true;               // reloading mid-stream kills the session — offer it only when idle
   try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch{}
   await buildControls();
+  await ensureMacroCam();          // hop off a non-macro physical wide if Safari handed us one
   if(needCanvas()){ startCanvas(); preview.srcObject=canvasStream; }   // persisted rotation/zoom onto the sent image
   connect();
   startStatsLoop();
