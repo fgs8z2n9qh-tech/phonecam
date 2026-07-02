@@ -471,6 +471,8 @@ function drawLoop(){
 function needCanvas(){ return zoom>1.001 || rot180 || filtersActive(); }
 async function updatePipeline(){
   if(!running) return;
+  if(reacquiring) return;           // a camera restart is mid-flight: camTrack/camStream are momentarily the
+                                    // STOPPED old stream — reconciling now would wire a dead track everywhere
   if(needCanvas()){
     if(!usingCanvas) startCanvas();
     await replaceTrackAll(canvasTrack); preview.srcObject=canvasStream;
@@ -488,7 +490,7 @@ function lensForZoom(z){
   for(const L of backLenses){ if(L.base<=z+1e-3) pick=L; }
   return pick;
 }
-function zMin(){ return backLenses.length ? backLenses[0].base : 1; }
+function zMin(){ return (facing==='environment' && backLenses.length) ? backLenses[0].base : 1; }   // front cam: no 0.5× (display lied)
 function syncZoomUI(){ zoomEl.min=zMin(); zoomEl.value=absZoom; setRange(zoomEl);
   zoomVal.textContent=(absZoom<10?absZoom.toFixed(1):Math.round(absZoom))+'×';
   if(typeof renderZoomTicks==='function'){ renderZoomTicks(); syncZoomThumb(); } }
@@ -503,29 +505,35 @@ function syncZoomUI(){ zoomEl.min=zMin(); zoomEl.value=absZoom; setRange(zoomEl)
 // the switch, so the digital crop (zoom = abs/base) stays framing-continuous.
 async function switchLensSeamless(L, abs){
   if(!L) return false;
-  const targetZoom=Math.max(1, abs/L.base);
   if(!usingCanvas){                                   // no live canvas to hold the frame -> old rebuild path
     const pDev=deviceId,pBase=curBase,pZoom=zoom;
-    deviceId=L.deviceId; curBase=L.base; zoom=targetZoom;
+    deviceId=L.deviceId; curBase=L.base; zoom=Math.max(1, abs/L.base);
     const ok=await reacquire(true).catch(e=>{ log('reacquire: '+e.message); return false; });
     if(!ok){ deviceId=pDev; curBase=pBase; zoom=pZoom; }
     return ok;
   }
   if(reacquiring) return false; reacquiring=true;     // reuse the camera-restart guard (blocks the watchdog too)
-  const pDev=deviceId,pBase=curBase,pZoom=zoom, old=camStream;
+  const pDev=deviceId,pBase=curBase, old=camStream;
   try{
-    deviceId=L.deviceId; curBase=L.base; zoom=targetZoom;
-    if(old) old.getTracks().forEach(t=>t.stop());     // iOS: free the old lens; canvas freezes on its last frame
-    let fresh;
+    deviceId=L.deviceId; curBase=L.base;              // NOTE: `zoom` keeps the OLD crop — the drawLoop is still
+    if(old) old.getTracks().forEach(t=>t.stop());     // holding the old lens's last frame; switching the crop now
+    let fresh;                                        // would visibly pop out/in during the warmup
     try{ fresh=await getStream(); }
     catch(e){                                         // new lens failed -> roll identity back, reopen the old lens
       log('lens switch: '+e.message);
-      deviceId=pDev; curBase=pBase; zoom=pZoom;
-      try{ fresh=await getStream(); }catch{ return false; }
+      deviceId=pDev; curBase=pBase;
+      try{ fresh=await getStream(); }
+      catch{                                          // old lens failed TOO (a call stole the camera mid-switch):
+        setState('camera lost — retrying…','bad');    // say so instead of freezing silently on "LIVE",
+        scheduleCamRecovery(true);                    // and keep retrying with backoff (stop() cancels it)
+        return false;
+      }
     }
     if(!running){ fresh.getTracks().forEach(t=>t.stop()); return false; }   // stopped mid-switch -> don't resurrect
     camStream=fresh; camTrack=fresh.getVideoTracks()[0]; wireCamTrack(camTrack);
     srcVideo.srcObject=camStream; srcVideo.play().catch(()=>{});   // canvasTrack + sender stay put -> no black
+    zoom=Math.max(1, abs/curBase);                    // only NOW flip the crop: srcVideo carries the new lens, so
+                                                      // the held old-lens frame kept its own framing (no pop)
     await applySenderParams(); showBadge(); buildControls();
     return true;
   } finally { reacquiring=false; }
@@ -539,7 +547,8 @@ async function applyZoom(abs, fromRelease){
   if(fromRelease && running && autoLens && backLenses.length>1 && facing==='environment'){
     const L=lensForZoom(abs);
     if(L && L.deviceId!==deviceId){
-      await switchLensSeamless(L, abs);        // keeps the canvas/sender alive -> no black flash (rollback inside)
+      const ok=await switchLensSeamless(L, abs);   // keeps the canvas/sender alive -> no black flash (rollback inside)
+      if(!ok){ absZoom=curBase*zoom; syncZoomUI(); }   // blocked/failed -> the chip/thumb follow reality, not the wish
       return;
     }
   }
@@ -548,7 +557,9 @@ async function applyZoom(abs, fromRelease){
 }
 function selectLens(L){                         // manual lens pill -> jump to that lens at its native zoom
   facing='environment'; absZoom=L.base; syncZoomUI();
-  switchLensSeamless(L, L.base).catch(e=>log('reacquire: '+e.message));   // seamless if zoomed (canvas live), else rebuild
+  switchLensSeamless(L, L.base)                 // seamless if zoomed (canvas live), else rebuild
+    .then(ok=>{ if(!ok){ absZoom=curBase*zoom; syncZoomUI(); } })   // failed -> undo the optimistic chip
+    .catch(e=>log('reacquire: '+e.message));
 }
 async function replaceTrackAll(track){
   if(!track) return;
@@ -573,11 +584,25 @@ async function applyParamsTo(sndr){
 
 // iOS reclaims the camera on a call / FaceTime / screen-lock -> the track fires 'ended' and we'd
 // keep sending black frames while the pill still reads LIVE. Watch it and re-acquire automatically.
+// ONE shared recovery timer: re-arms itself with backoff while the OS still holds the camera
+// (call/lock not finished), and is cancelled by stop() so it can never fire into a NEW session
+// and race start()'s own getUserMedia.
+let camRetryTimer=0, camRetryDelay=800;
+function scheduleCamRecovery(switchCam=false){
+  clearTimeout(camRetryTimer);
+  camRetryTimer=setTimeout(async()=>{
+    if(!running) return;
+    let ok=false;
+    try{ ok=await reacquire(switchCam); }catch{}
+    if(ok) camRetryDelay=800;
+    else if(running){ camRetryDelay=Math.min(camRetryDelay*2, 5000); scheduleCamRecovery(switchCam); }
+  }, camRetryDelay);
+}
 function wireCamTrack(t){
   if(!t) return;
-  // Defer the retry ~800ms: if the OS still holds the camera (call/lock not finished), the fresh
-  // track fires 'ended' again immediately — without this delay that becomes a tight reacquire loop.
-  t.onended=()=>{ if(running){ log('Camera interrupted — recovering…'); setTimeout(()=>{ if(running) reacquire().catch(()=>{}); }, 800); } };
+  // Deferred retry with backoff: if the OS still holds the camera, the fresh track fires 'ended'
+  // again immediately — the backoff stops that becoming a tight reacquire loop.
+  t.onended=()=>{ if(running){ log('Camera interrupted — recovering…'); scheduleCamRecovery(); } };
 }
 
 // ---- re-request camera/resolution/fps while live ----
@@ -861,7 +886,8 @@ function updateAggState(){
 }
 
 async function stop(){
-  running=false; toggleBtn.textContent='▶ Start'; toggleBtn.classList.remove('stop');
+  running=false; clearTimeout(camRetryTimer); camRetryDelay=800;   // a stale recovery must never race the next start()
+  toggleBtn.textContent='▶ Start'; toggleBtn.classList.remove('stop');
   snapBtn.hidden=true; stopStatsLoop();
   badge.hidden=true; setState('stopped'); log(''); ui.classList.remove('ui-hidden');
   try{ ws&&ws.close(); }catch{} closeAllViewers();
