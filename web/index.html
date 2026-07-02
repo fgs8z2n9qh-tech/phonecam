@@ -40,20 +40,24 @@
   .ui{position:fixed;inset:0;z-index:30;pointer-events:none}
   .ui>*{pointer-events:auto}
 
-  .topbar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;
+  .topbar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;
     /* clear the notch/Dynamic Island AND the curved screen corners on both sides */
     padding:calc(env(safe-area-inset-top,8px) + 8px) calc(env(safe-area-inset-right,0px) + 16px) 8px
             calc(env(safe-area-inset-left,0px) + 16px);transition:opacity .35s}
   .pill{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
     background:rgba(0,0,0,.5);backdrop-filter:blur(8px);border:1px solid var(--glass-line);
-    padding:6px 11px;border-radius:999px;color:#cdd7e1}
-  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);transition:.3s}
-  .dot.live{background:var(--accent);box-shadow:0 0 0 4px rgba(63,185,80,.18)}
+    padding:6px 11px;border-radius:999px;color:#cdd7e1;white-space:nowrap}
+  /* narrow phones: the status may sit beside the stats badge + 2 buttons — clip, never push */
+  #status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:36vw}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);transition:.3s;flex:0 0 auto}
+  .dot.live{background:var(--accent);box-shadow:0 0 0 4px rgba(63,185,80,.18);
+    animation:livepulse 2.4s ease-in-out infinite}
+  @keyframes livepulse{0%,100%{box-shadow:0 0 0 4px rgba(63,185,80,.20)}50%{box-shadow:0 0 0 8px rgba(63,185,80,.06)}}
   .dot.bad{background:var(--bad)} .dot.wait{background:var(--warn)}
-  .topright{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .topright{margin-left:auto;display:flex;align-items:center;gap:8px;min-width:0}
   .statbadge{font:600 11px/1.35 ui-monospace,Menlo,monospace;text-align:right;
     background:rgba(0,0,0,.5);backdrop-filter:blur(8px);border:1px solid var(--glass-line);
-    border-radius:10px;padding:5px 9px;color:#cdd7e1}
+    border-radius:10px;padding:5px 9px;color:#cdd7e1;white-space:nowrap;overflow:hidden;min-width:0}
   .iconbtn{display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex:0 0 auto;
     border-radius:50%;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);
     border:1px solid var(--glass-line);color:#cdd7e1}
@@ -111,8 +115,17 @@
     padding:4px 12px calc(env(safe-area-inset-bottom,10px) + 8px);
     background:var(--glass);backdrop-filter:blur(22px) saturate(140%);
     border-top:1px solid var(--glass-line);border-radius:22px 22px 0 0;box-shadow:var(--shadow);
-    transition:transform .32s cubic-bezier(.22,.61,.36,1);transform:translateY(112%)}
+    transition:transform .32s cubic-bezier(.22,.61,.36,1);transform:translateY(112%);
+    /* landscape phones are shorter than the sheet's content -> the body scrolls instead of
+       the top controls escaping off-screen */
+    max-height:calc(100vh - 54px);max-height:calc(100dvh - 54px)}
   .sheet.open{transform:translateY(0)}
+  .sheet-scroll{display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .sheet-scroll::-webkit-scrollbar{display:none}
+  .sec{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:800;letter-spacing:1.4px;
+    text-transform:uppercase;color:var(--muted);margin:4px 2px -3px}
+  .sec::after{content:'';flex:1;height:1px;background:var(--glass-line)}
   /* while the More sheet is open, hide the quick controls (zoom + dock) so they don't sit
      under the backdrop (a tap on zoom would otherwise close the sheet instead of zooming) */
   .zoomdock,.botdock,.lensdock{transition:opacity .2s}
@@ -185,9 +198,26 @@
     box-shadow:0 0 0 1px rgba(63,185,80,.4),0 8px 24px rgba(46,160,67,.35);transition:.25s}
   .start:active{transform:scale(.99)}
   .start.stop{background:rgba(248,81,73,.14);border-color:var(--bad);color:var(--bad);box-shadow:none}
-  .log{position:absolute;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 4px);
-    text-align:center;font-size:11px;color:rgba(205,215,225,.85);pointer-events:none;
-    text-shadow:0 1px 3px #000;z-index:20}
+  /* toast: floats above the dock, fades out on its own (the old fixed log line was
+     invisible in landscape and lingered forever) */
+  .log{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,10px) + 78px);
+    transform:translateX(-50%) translateY(8px);max-width:min(86vw,480px);padding:9px 14px;
+    border-radius:13px;background:rgba(10,13,18,.88);backdrop-filter:blur(10px);
+    border:1px solid var(--glass-line);color:#dbe4ee;font-size:12.5px;line-height:1.45;
+    text-align:center;z-index:40;pointer-events:none;opacity:0;transition:opacity .25s,transform .25s}
+  .log.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* snapshot shutter flash */
+  .flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:55}
+  /* dim mode: near-black overlay for long streams (OLED battery saver); the stream keeps
+     running — the page stays visible to iOS, only the pixels go dark */
+  .dim{position:fixed;inset:0;z-index:60;background:#000;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;touch-action:manipulation}
+  .dim[hidden]{display:none}
+  .dim-time{font-weight:200;font-size:54px;color:rgba(230,237,243,.17);
+    font-variant-numeric:tabular-nums;letter-spacing:2px}
+  .dim-sub{display:flex;align-items:center;gap:7px;font-size:12px;letter-spacing:.5px;
+    color:rgba(230,237,243,.12)}
+  .dim-dot{width:7px;height:7px;border-radius:50%;background:rgba(63,185,80,.35)}
   /* Phone in LANDSCAPE: keep the same dock layout, just more compact. The vertical
      zoom uses the (now tall) right edge; the bottom dock + sheet stay at the bottom. */
   @media (orientation: landscape) and (max-height: 560px){
@@ -200,7 +230,8 @@
     .lens{ padding:6px 11px; font-size:13px; }
     .start{ min-height:40px; font-size:15px; }
     .morebtn{ width:46px; }
-    .log{ display:none; }
+    .log{ bottom:calc(env(safe-area-inset-bottom,6px) + 62px); }
+    .dim-time{ font-size:44px; }
     .ctrl-row{ gap:2px; }
     .ctrl-head{ font-size:12px; }
     input[type=range]{ height:24px; }
@@ -210,7 +241,7 @@
     .toggle .ic svg{ width:18px; height:18px; }
     .hint-card{ margin-bottom:56px; }
   }
-  @media (prefers-reduced-motion: reduce){ .sheet{transition:opacity .2s} }
+  @media (prefers-reduced-motion: reduce){ .sheet{transition:opacity .2s} .dot.live{animation:none} }
 </style>
 </head>
 <body>
@@ -223,6 +254,7 @@
       <div class="topright">
         <div class="statbadge" id="badge" hidden></div>
         <button class="iconbtn" id="snapBtn" aria-label="Snapshot" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h1.5l.8-1.4A2 2 0 0 1 11 4.7h2a2 2 0 0 1 1.7.9L15.5 7H17a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="11" cy="13" r="3.2"/></svg></button>
+        <button class="iconbtn" id="dimBtn" aria-label="Dim screen" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 14.1A8.6 8.6 0 0 1 9.9 3.4a8.6 8.6 0 1 0 10.7 10.7z"/></svg></button>
         <button class="iconbtn" id="reloadBtn" aria-label="Reload page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></button>
       </div>
     </div>
@@ -266,50 +298,60 @@
       <button class="handle" id="sheetHandle" type="button" aria-label="Close controls"></button>
       <button class="sheet-close" id="sheetClose" type="button" aria-label="Close controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
 
-      <div class="ctrl-row">
-        <div class="ctrl-head"><svg class="i" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="14" width="4" height="6" rx="1.3"/><rect x="10" y="9" width="4" height="11" rx="1.3"/><rect x="17" y="4" width="4" height="16" rx="1.3"/></svg> Bitrate <span class="val" id="brVal">8.0 Mbps</span></div>
-        <input type="range" id="bitrate" min="2" max="20" step="1" value="8">
-      </div>
+      <div class="sheet-scroll">
+        <div class="sec">Stream</div>
+        <div class="ctrl-row">
+          <div class="ctrl-head"><svg class="i" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="14" width="4" height="6" rx="1.3"/><rect x="10" y="9" width="4" height="11" rx="1.3"/><rect x="17" y="4" width="4" height="16" rx="1.3"/></svg> Bitrate <span class="val" id="brVal">8.0 Mbps</span></div>
+          <input type="range" id="bitrate" min="2" max="20" step="1" value="8">
+        </div>
 
-      <!-- telephoto zoom factor (varies by iPhone; Safari can't report it) — only shown if a tele lens exists -->
-      <div class="ctrl-row" id="teleRow" hidden>
-        <div class="ctrl-head"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 5V3M12 21v-2M5 12H3M21 12h-2"/></svg> Telephoto zoom <span class="val" id="teleVal">2×</span></div>
-        <div class="toggles" style="grid-template-columns:repeat(5,1fr)" id="teleSeg">
-          <button class="toggle tbtn" data-tb="2">2×</button>
-          <button class="toggle tbtn" data-tb="2.5">2.5×</button>
-          <button class="toggle tbtn" data-tb="3">3×</button>
-          <button class="toggle tbtn" data-tb="4">4×</button>
-          <button class="toggle tbtn" data-tb="5">5×</button>
+        <div class="toggles">
+          <button class="toggle" id="fpsBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 13l3.4-3"/></svg></span><span id="fpsLbl">30 fps</span></button>
+          <button class="toggle" id="resBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H5a1 1 0 0 0-1 1v3M16 4h3a1 1 0 0 1 1 1v3M16 20h3a1 1 0 0 0 1-1v-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg></span><span id="resLbl">720p</span></button>
+          <button class="toggle" id="autoBrBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 9 9"/><path d="M12 12l4-2"/><path d="M3 12a9 9 0 0 0 3.5 7.1M21 12a9 9 0 0 1-3.5 7.1"/></svg></span>Auto bitrate</button>
+          <button class="toggle" id="autostartBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/><path d="M19 4v4"/></svg></span>Auto-start</button>
+        </div>
+
+        <div class="sec">Camera</div>
+        <!-- telephoto zoom factor (varies by iPhone; Safari can't report it) — only shown if a tele lens exists -->
+        <div class="ctrl-row" id="teleRow" hidden>
+          <div class="ctrl-head"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 5V3M12 21v-2M5 12H3M21 12h-2"/></svg> Telephoto zoom <span class="val" id="teleVal">2×</span></div>
+          <div class="toggles" style="grid-template-columns:repeat(5,1fr)" id="teleSeg">
+            <button class="toggle tbtn" data-tb="2">2×</button>
+            <button class="toggle tbtn" data-tb="2.5">2.5×</button>
+            <button class="toggle tbtn" data-tb="3">3×</button>
+            <button class="toggle tbtn" data-tb="4">4×</button>
+            <button class="toggle tbtn" data-tb="5">5×</button>
+          </div>
+        </div>
+
+        <div class="toggles">
+          <button class="toggle" id="torchBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L5 13h6l-1 9 8-12h-6z"/></svg></span>Flash</button>
+          <button class="toggle" id="mirrorBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 7l-4 5 4 5"/><path d="M15 7l4 5-4 5"/></svg></span>Mirror</button>
+          <button class="toggle" id="rotateBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></span>Rotate 180°</button>
+          <button class="toggle" id="focusBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>Focus</button>
+        </div>
+
+        <div class="sec">Image &amp; framing</div>
+        <div class="adjrow"><span class="adjlbl">Bright</span><input type="range" id="adjBright" min="0.5" max="1.6" step="0.02" value="1"></div>
+        <div class="adjrow"><span class="adjlbl">Contrast</span><input type="range" id="adjContrast" min="0.5" max="1.6" step="0.02" value="1"></div>
+        <div class="adjrow"><span class="adjlbl">Saturation</span><input type="range" id="adjSat" min="0" max="2" step="0.02" value="1"></div>
+        <div class="adjrow"><span class="adjlbl">Warmth</span><input type="range" id="adjWarmth" min="-1" max="1" step="0.02" value="0"></div>
+
+        <div class="toggles" style="grid-template-columns:repeat(3,1fr)">
+          <button class="toggle" id="gridBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></span>Grid</button>
+          <button class="toggle" id="levelBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h6M16 12h6"/><circle cx="12" cy="12" r="2.6"/></svg></span>Level</button>
+          <button class="toggle" id="adjResetBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></svg></span>Reset</button>
         </div>
       </div>
-
-      <div class="toggles">
-        <button class="toggle" id="fpsBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 13l3.4-3"/></svg></span><span id="fpsLbl">30 fps</span></button>
-        <button class="toggle" id="resBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4H5a1 1 0 0 0-1 1v3M16 4h3a1 1 0 0 1 1 1v3M16 20h3a1 1 0 0 0 1-1v-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg></span><span id="resLbl">720p</span></button>
-        <button class="toggle" id="torchBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L5 13h6l-1 9 8-12h-6z"/></svg></span>Flash</button>
-        <button class="toggle" id="mirrorBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 7l-4 5 4 5"/><path d="M15 7l4 5-4 5"/></svg></span>Mirror</button>
-      </div>
-
-      <div class="toggles">
-        <button class="toggle" id="rotateBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></span>Rotate 180°</button>
-        <button class="toggle" id="focusBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>Focus</button>
-        <button class="toggle" id="autoBrBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 9 9"/><path d="M12 12l4-2"/><path d="M3 12a9 9 0 0 0 3.5 7.1M21 12a9 9 0 0 1-3.5 7.1"/></svg></span>Auto bitrate</button>
-        <button class="toggle" id="autostartBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/><path d="M19 4v4"/></svg></span>Auto-start</button>
-      </div>
-
-      <div class="toggles" style="grid-template-columns:repeat(3,1fr)">
-        <button class="toggle" id="gridBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></span>Grid</button>
-        <button class="toggle" id="levelBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h6M16 12h6"/><circle cx="12" cy="12" r="2.6"/></svg></span>Level</button>
-        <button class="toggle" id="adjResetBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></svg></span>Reset</button>
-      </div>
-
-      <div class="adjrow"><span class="adjlbl">Bright</span><input type="range" id="adjBright" min="0.5" max="1.6" step="0.02" value="1"></div>
-      <div class="adjrow"><span class="adjlbl">Contrast</span><input type="range" id="adjContrast" min="0.5" max="1.6" step="0.02" value="1"></div>
-      <div class="adjrow"><span class="adjlbl">Saturation</span><input type="range" id="adjSat" min="0" max="2" step="0.02" value="1"></div>
-      <div class="adjrow"><span class="adjlbl">Warmth</span><input type="range" id="adjWarmth" min="-1" max="1" step="0.02" value="0"></div>
     </div>
   </div>
   <div class="focusring" id="focusring"></div>
+  <div class="flash" id="flash"></div>
+  <div class="dim" id="dim" role="button" aria-label="Wake screen" hidden>
+    <div class="dim-time" id="dimTime">0:00</div>
+    <div class="dim-sub"><span class="dim-dot"></span> streaming — tap to wake</div>
+  </div>
   <div class="log" id="log"></div>
 
 <script>
@@ -324,7 +366,8 @@ const preview=$('#preview'), srcVideo=$('#src'), dot=$('#dot'), statusEl=$('#sta
       torchBtn=$('#torchBtn'), mirrorBtn=$('#mirrorBtn'),
       rotateBtn=$('#rotateBtn'), focusBtn=$('#focusBtn'), autoBrBtn=$('#autoBrBtn'),
       autostartBtn=$('#autostartBtn'), snapBtn=$('#snapBtn'), focusring=$('#focusring'),
-      moreBtn=$('#moreBtn'),
+      moreBtn=$('#moreBtn'), reloadBtn=$('#reloadBtn'), dimBtn=$('#dimBtn'),
+      dimEl=$('#dim'), dimTimeEl=$('#dimTime'), flashEl=$('#flash'),
       gridBtn=$('#gridBtn'), levelBtn=$('#levelBtn'), adjResetBtn=$('#adjResetBtn'),
       adjBrightEl=$('#adjBright'), adjContrastEl=$('#adjContrast'), adjSatEl=$('#adjSat'), adjWarmthEl=$('#adjWarmth'),
       gridOv=$('#gridOv'), levelOv=$('#levelOv'), levelLine=$('#levelLine');
@@ -342,6 +385,7 @@ const FPS=[24,30,60]; let fpsIdx=1;
 let facing='environment', deviceId=null;     // which camera
 let hideT=0;
 let rot180=false, autoBitrate=false, autostart=false, focusEnabled=false, wantMirror=false;
+let liveT0=0, logT=0, dimT=0;                 // session-start time · toast fade timer · dim clock timer
 // ---- dynamic lens (iOS-style): the zoom factor picks the physical lens, digital crop fills the gaps ----
 let backLenses=[], curBase=1, absZoom=1, autoLens=true;
 const ULTRA_BASE=0.5, WIDE_BASE=1, TELE_BASE=2;   // ultra-wide + wide are fixed; telephoto varies by model
@@ -375,7 +419,11 @@ function loadSettings(){ try{
   if([2,2.5,3,4,5].includes(s.teleBase)) teleBase=s.teleBase;
 }catch{} }
 
-function log(m){ logEl.textContent=m; }
+// toast: shows, then fades on its own; longer messages stay proportionally longer
+function log(m, ms){ clearTimeout(logT);
+  if(!m){ logEl.classList.remove('show'); return; }
+  logEl.textContent=m; logEl.classList.add('show');
+  logT=setTimeout(()=>logEl.classList.remove('show'), ms || Math.max(3800, m.length*60)); }
 function setState(s,kind){ statusEl.textContent=s; dot.className='dot'+(kind?' '+kind:''); }
 function setRange(el){ const min=+el.min,max=+el.max; el.style.setProperty('--p',((el.value-min)/(max-min)*100)+'%'); }
 
@@ -758,10 +806,17 @@ function reflectActualFps(){
   }
 }
 
+// compact session clock: m:ss under an hour, then 1h05m (constant width — the top bar is tight)
+function fmtElapsed(){ if(!liveT0) return '';
+  const s=Math.floor((Date.now()-liveT0)/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60);
+  return h ? h+'h'+String(m).padStart(2,'0')+'m' : m+':'+String(s%60).padStart(2,'0'); }
+function fmtMbps(v){ return v<10 ? v.toFixed(1) : String(Math.round(v)); }
 function showBadge(){
   const t=camTrack&&camTrack.getSettings?camTrack.getSettings():{};
+  const el=fmtElapsed();
   badge.hidden=false;
-  badge.innerHTML=`${t.width||'?'}×${t.height||'?'} · ${Math.round(t.frameRate||0)}fps<br>${(bitrateKbps/1000).toFixed(1)} Mbps`;
+  badge.innerHTML=`${t.width||'?'}×${t.height||'?'} · ${Math.round(t.frameRate||0)}fps<br>`+
+    `${fmtMbps(bitrateKbps/1000)}Mbps${el?(' · '+el):''}`;
 }
 
 // ---- live quality HUD (getStats) + adaptive "Auto" bitrate ----
@@ -792,10 +847,15 @@ async function sampleStats(){
     worstLoss=Math.max(worstLoss,lossPct); worstRtt=Math.max(worstRtt,rtt);
     dispMbps+=mbps; if(w){ dispW=w; dispH=h; dispFps=fps; } any=true;
   }
-  if(!any) return;
+  if(!any){ if(!badge.hidden) showBadge(); return; }   // no viewer: keep the session clock ticking
+  // colour the throughput by link health: green = clean, amber = minor loss/latency, red = struggling
+  const qc = (worstLoss>3 || worstRtt>0.35) ? 'var(--bad)'
+           : (worstLoss>=1 || worstRtt>0.2) ? '#e3b341' : 'var(--accent)';
   badge.hidden=false;
   badge.innerHTML=`${dispW||'?'}×${dispH||'?'} · ${Math.round(dispFps)||0}fps<br>`+
-    `${dispMbps.toFixed(1)} Mbps${worstLoss>=0.5?(' · '+worstLoss.toFixed(0)+'% ↓'):''}${worstRtt?(' · '+Math.round(worstRtt*1000)+'ms'):''}`;
+    `<span style="color:${qc}">${fmtMbps(dispMbps)}Mbps</span>`+
+    `${worstLoss>=0.5?(' · '+worstLoss.toFixed(0)+'% ↓'):''}${worstRtt>0.1?(' · '+Math.round(worstRtt*1000)+'ms'):''}`+
+    ` · ${fmtElapsed()}`;
   if(autoBitrate) adaptBitrate(worstLoss);
 }
 // AIMD: back off on packet loss (×0.8), ramp up on a clean line (+0.5 Mbps) up to the slider ceiling
@@ -816,15 +876,18 @@ async function start(){
   catch(e){ log('Camera error: '+e.message+' — accept the certificate and the permission.'); setState('no camera','bad'); return; }
   camTrack=camStream.getVideoTracks()[0]; wireCamTrack(camTrack);
   preview.srcObject=camStream; try{ await preview.play(); }catch{}
-  hint.hidden=true; running=true;
+  hint.hidden=true; running=true; liveT0=Date.now();
   toggleBtn.textContent='■ Stop'; toggleBtn.classList.add('stop');
-  snapBtn.hidden=false;
+  snapBtn.hidden=false; dimBtn.hidden=false;
+  reloadBtn.hidden=true;               // reloading mid-stream kills the session — offer it only when idle
   try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch{}
   await buildControls();
   if(needCanvas()){ startCanvas(); preview.srcObject=canvasStream; }   // persisted rotation/zoom onto the sent image
   connect();
   startStatsLoop();
   poke();
+  try{ if(!localStorage.getItem('phonecam.gh')){ localStorage.setItem('phonecam.gh','1');
+    log('Pinch to zoom · double-tap switches lens · hold to mirror', 6500); } }catch{}
 }
 
 function sentTrack(){ return usingCanvas?canvasTrack:camTrack; }
@@ -888,7 +951,8 @@ function updateAggState(){
 async function stop(){
   running=false; clearTimeout(camRetryTimer); camRetryDelay=800;   // a stale recovery must never race the next start()
   toggleBtn.textContent='▶ Start'; toggleBtn.classList.remove('stop');
-  snapBtn.hidden=true; stopStatsLoop();
+  snapBtn.hidden=true; dimBtn.hidden=true; reloadBtn.hidden=false; dimOff(); liveT0=0;
+  stopStatsLoop();
   badge.hidden=true; setState('stopped'); log(''); ui.classList.remove('ui-hidden');
   try{ ws&&ws.close(); }catch{} closeAllViewers();
   stopCanvas();
@@ -963,9 +1027,13 @@ function disableLevel(){ if(orientHandler){ window.removeEventListener('deviceor
 levelBtn.onclick=()=>{ poke(); levelOn=!levelOn; levelBtn.classList.toggle('on',levelOn); levelOn?enableLevel():disableLevel(); };
 
 // ---- snapshot (from the current frame, downloaded to the phone) ----
+function shutterFlash(){ flashEl.style.transition='none'; flashEl.style.opacity='0.8';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    flashEl.style.transition='opacity .35s'; flashEl.style.opacity='0'; })); }
 function snapshot(){
   const vw=preview.videoWidth, vh=preview.videoHeight;
   if(!vw||!vh){ log('No image to snapshot'); return; }
+  shutterFlash();
   const c=document.createElement('canvas'); c.width=vw; c.height=vh;
   try{ c.getContext('2d').drawImage(preview,0,0,vw,vh); }catch{ log('Snapshot error'); return; }
   c.toBlob(b=>{ if(!b) return; const a=document.createElement('a');
@@ -1081,11 +1149,19 @@ moreBtn.onclick=()=>{ sheet.classList.contains('open') ? closeSheet() : openShee
 $('#sheetHandle').onclick=closeSheet;
 $('#sheetClose').onclick=closeSheet;
 sheetBackdrop.onclick=closeSheet;
+
+// ---- dim mode: black out the screen during long streams (the wake lock + stream stay on) ----
+function dimOn(){ if(!dimEl.hidden) return; dimEl.hidden=false;
+  dimTimeEl.textContent=fmtElapsed()||'0:00';
+  clearInterval(dimT); dimT=setInterval(()=>{ dimTimeEl.textContent=fmtElapsed()||'0:00'; },1000); }
+function dimOff(){ if(dimEl.hidden) return; dimEl.hidden=true; clearInterval(dimT); dimT=0; }
+dimBtn.onclick=()=>{ poke(); dimOn(); };
+dimEl.addEventListener('click',dimOff);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && sheet.classList.contains('open')) closeSheet(); });
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden && running && (!camTrack||camTrack.readyState!=='live')) reacquire().catch(()=>{}); });
 
 // init
-document.getElementById('reloadBtn').onclick=()=>location.reload();
+reloadBtn.onclick=()=>location.reload();
 loadSettings();
 // persisted state onto the UI
 resLbl.textContent=RES_LBL[RES[resIdx]];
