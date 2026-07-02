@@ -290,6 +290,8 @@
     <div class="botdock" id="botdock">
       <div class="botrow">
         <button class="start" id="toggle">▶ Start</button>
+        <!-- quick flash: only shown while live on a torch-capable camera -->
+        <button class="iconbtn morebtn" id="torchBtn" aria-label="Flash" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L5 13h6l-1 9 8-12h-6z"/></svg></button>
         <button class="iconbtn morebtn" id="moreBtn" aria-label="More controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.6 7.6 0 0 0 .1-2l1.8-1.4-2-3.4-2.1.9a7.6 7.6 0 0 0-1.7-1l-.3-2.3H9.7l-.3 2.3a7.6 7.6 0 0 0-1.7 1l-2.1-.9-2 3.4L5.4 11a7.6 7.6 0 0 0 0 2l-1.8 1.4 2 3.4 2.1-.9a7.6 7.6 0 0 0 1.7 1l.3 2.3h4.6l.3-2.3a7.6 7.6 0 0 0 1.7-1l2.1.9 2-3.4z"/></svg></button>
       </div>
     </div>
@@ -329,8 +331,7 @@
           </div>
         </div>
 
-        <div class="toggles">
-          <button class="toggle" id="torchBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L5 13h6l-1 9 8-12h-6z"/></svg></span>Flash</button>
+        <div class="toggles" style="grid-template-columns:repeat(3,1fr)">
           <button class="toggle" id="mirrorBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 7l-4 5 4 5"/><path d="M15 7l4 5-4 5"/></svg></span>Mirror</button>
           <button class="toggle" id="rotateBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></span>Rotate 180°</button>
           <button class="toggle" id="focusBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>Focus</button>
@@ -766,7 +767,11 @@ async function buildControls(){
   syncZoomUI();   // zoom slider range/value follows the available lenses
   // torch + focus only if the camera supports it (on iOS Safari usually neither exists)
   let caps={}; try{ caps=camTrack.getCapabilities?camTrack.getCapabilities():{}; }catch{}
+  // quick flash in the bottom dock: shown only while live on a torch-capable camera;
+  // a fresh track always starts with the torch OFF, so drop any stale on-state
+  torchBtn.hidden = !(running && caps && caps.torch);
   torchBtn.disabled = !(caps && caps.torch);
+  torchBtn.classList.remove('on');
   const focusable = !!(caps && (caps.pointsOfInterest ||
     (Array.isArray(caps.focusMode) && (caps.focusMode.includes('single-shot')||caps.focusMode.includes('continuous')||caps.focusMode.includes('manual')))));
   focusBtn.disabled = !focusable;
@@ -985,6 +990,7 @@ async function stop(){
   running=false; clearTimeout(camRetryTimer); camRetryDelay=800;   // a stale recovery must never race the next start()
   toggleBtn.textContent='▶ Start'; toggleBtn.classList.remove('stop');
   snapBtn.hidden=true; dimBtn.hidden=true; reloadBtn.hidden=false; dimOff(); liveT0=0;
+  torchBtn.hidden=true; torchBtn.classList.remove('on');
   stopStatsLoop();
   badge.hidden=true; setState('stopped'); log(''); ui.classList.remove('ui-hidden');
   try{ ws&&ws.close(); }catch{} closeAllViewers();
