@@ -302,7 +302,7 @@
         <div class="sec">Stream</div>
         <div class="ctrl-row">
           <div class="ctrl-head"><svg class="i" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="14" width="4" height="6" rx="1.3"/><rect x="10" y="9" width="4" height="11" rx="1.3"/><rect x="17" y="4" width="4" height="16" rx="1.3"/></svg> Bitrate <span class="val" id="brVal">8.0 Mbps</span></div>
-          <input type="range" id="bitrate" min="2" max="20" step="1" value="8">
+          <input type="range" id="bitrate" min="2" max="40" step="1" value="8">
         </div>
 
         <div class="toggles">
@@ -406,7 +406,7 @@ function loadSettings(){ try{
   const s=JSON.parse(localStorage.getItem(LS)||'{}');
   if(Number.isInteger(s.resIdx)&&s.resIdx>=0&&s.resIdx<RES.length) resIdx=s.resIdx;
   if(Number.isInteger(s.fpsIdx)&&s.fpsIdx>=0&&s.fpsIdx<FPS.length) fpsIdx=s.fpsIdx;
-  if(s.bitrateKbps) bitrateKbps=Math.min(20000,Math.max(2000,s.bitrateKbps));
+  if(s.bitrateKbps) bitrateKbps=Math.min(40000,Math.max(2000,s.bitrateKbps));
   if(s.facing==='user'||s.facing==='environment') facing=s.facing;
   if(typeof s.mirror==='boolean') wantMirror=s.mirror;
   if(typeof s.rot180==='boolean') rot180=s.rot180;

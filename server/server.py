@@ -36,7 +36,9 @@ from aiortc.sdp import candidate_from_sdp
 import aiortc.rtcrtpreceiver as _aiortc_recv
 from aiortc.rate import RemoteBitrateEstimator as _RealBitrateEstimator
 
-_FORCE_REMB_BPS = 10_000_000  # 10 Mbps REMB ceiling (the real limit is the phone's maxBitrate)
+_FORCE_REMB_BPS = 40_000_000  # REMB ceiling matching the phone slider's 40 Mbps max — the
+                              # real limit is the phone's maxBitrate; anything lower here
+                              # silently caps the vcam path no matter what the slider says
 
 
 class _ForcedHighBitrateEstimator(_RealBitrateEstimator):
@@ -109,10 +111,10 @@ WEB_DIR = os.path.join(ROOT, "web")
 # Fixed resolution/fps of the virtual camera (the incoming image is resized to this).
 VCAM_W, VCAM_H, VCAM_FPS = 1280, 720, 30
 
-# The video b=AS ceiling in kbps (for the aiortc fallback path). On the browser path the
-# phone's slider (setParameters maxBitrate) is the real control; with a browser viewer there
-# is no artifact risk at high bitrates, so the ceiling is more generous.
-MAX_KBPS = 20000
+# Bitrate ceiling in kbps (kept aligned with the phone slider's max). The phone's slider
+# (setParameters maxBitrate) is the real control on every path; this is CLI plumbing only
+# since the legacy /ws media path was removed.
+MAX_KBPS = 40000
 
 
 def _fit_vcam(w, h, max_long=1920, max_short=1080):
