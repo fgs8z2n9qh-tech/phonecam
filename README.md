@@ -27,8 +27,12 @@ picture into a **virtual camera** so any app — Discord, Zoom, Teams, OBS — c
 
 ## Quick start (portable — recommended)
 
-1. Download **`PhoneCam-Portable.zip`** from the [latest release](../../releases/latest) and unzip it anywhere.
-2. Double‑click **`PhoneCam.exe`**. The window opens with a **QR code** and two web addresses.
+1. Download from the [latest release](../../releases/latest) — either flavour:
+   - **`PhoneCam-SingleFile.exe`** — one file, nothing to unzip. The first run unpacks itself to
+     `%LOCALAPPDATA%\PhoneCam` (progress bar, ~20 s); every later run starts instantly.
+   - **`PhoneCam-Portable.zip`** — the same app as a folder; unzip it anywhere.
+2. Double‑click **`PhoneCam-SingleFile.exe`** (or **`PhoneCam.exe`** inside the unzipped folder).
+   The window opens with a **QR code** and two web addresses.
    - If Windows shows a blue *"Windows protected your PC"* box: **More info → Run anyway** (it's unsigned, not harmful).
 3. **Allow the firewall** (first time only). When Windows pops up the Defender Firewall dialog,
    tick **Private networks → Allow access**.

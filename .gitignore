@@ -41,3 +41,7 @@ UnityCapture/
 .idea/
 Thumbs.db
 desktop.ini
+
+# build outputs
+PhoneCam-SingleFile.exe
+SingleExe.stamped.cs
