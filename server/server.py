@@ -186,6 +186,7 @@ async def consume_video(track, sink, loop, hooks=None):
     W = H = None           # decided from the FIRST frame (native res, capped to 1080p)
     canvas = None
     last = None            # last (nw, nh) -> for redrawing the bars
+    pending = None         # in-flight vcam send (executor future) -> decode overlaps send
     frames = 0
     stat_t0 = loop.time()  # real statistics (incoming resolution + fps)
     stat_n = 0
@@ -209,21 +210,33 @@ async def consume_video(track, sink, loop, hooks=None):
             nw = max(2, min(W, (int(round(w * scale)) // 2) * 2))   # even size for swscale
             nh = max(2, min(H, (int(round(h * scale)) // 2) * 2))
             small = frame.reformat(width=nw, height=nh, format="rgb24").to_ndarray()
-            if last != (nw, nh):                           # orientation changed -> clear bars to black
-                canvas[:] = 0
-                last = (nw, nh)
-            y0, x0 = (H - nh) // 2, (W - nw) // 2
-            canvas[y0:y0 + nh, x0:x0 + nw] = small         # image centered
+            if nw == W and nh == H:
+                # frame fills the vcam exactly (the common case — the vcam was auto-sized to this
+                # stream) -> send it directly, skipping a full-frame copy onto the canvas
+                out = small if small.flags["C_CONTIGUOUS"] else np.ascontiguousarray(small)
+            else:                                          # rotated mid-stream -> letterbox on the canvas
+                if pending is not None:                    # the canvas is reused: never overwrite in-flight
+                    await pending
+                    pending = None
+                if last != (nw, nh):                       # orientation changed -> clear bars to black
+                    canvas[:] = 0
+                    last = (nw, nh)
+                y0, x0 = (H - nh) // 2, (W - nw) // 2
+                canvas[y0:y0 + nh, x0:x0 + nw] = small     # image centered
+                out = canvas
         except Exception as e:
             log.error("frame conversion error: %s", e)
             continue
         if hooks and hooks.on_frame:
             try:
-                hooks.on_frame(canvas)  # GUI preview (the hook makes its own copy)
+                hooks.on_frame(out)  # optional per-frame hook (the GUI preview no longer uses it)
             except Exception:
                 pass
-        # sending may block -> run in executor; wait before overwriting the canvas
-        await loop.run_in_executor(None, sink.send_rgb, canvas)
+        # pipeline the vcam send: keep at most ONE send in flight, so decoding frame N+1
+        # overlaps sending frame N (send_rgb never raises — it logs internally).
+        if pending is not None:
+            await pending
+        pending = asyncio.ensure_future(loop.run_in_executor(None, sink.send_rgb, out))
         frames += 1
         if frames == 1:
             log.info("First frame forwarded to the virtual camera.")
@@ -239,6 +252,11 @@ async def consume_video(track, sink, loop, hooks=None):
                     pass
             stat_t0 = loop.time()
             stat_n = 0
+    if pending is not None:      # drain the last in-flight send
+        try:
+            await pending
+        except Exception:
+            pass
     log.info("Video track ended.")
     if hooks and hooks.on_frame:
         try:

@@ -18,12 +18,9 @@ import socket
 import subprocess
 import sys
 import threading
-import time
-
-import numpy as np
 
 from PySide6.QtCore import Qt, QObject, Signal, Slot, QTimer, QSettings, QUrl
-from PySide6.QtGui import QImage, QPixmap, QFont, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QPixmap, QFont, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QPushButton, QComboBox,
     QHBoxLayout, QVBoxLayout, QGridLayout, QFrame, QPlainTextEdit, QSizePolicy,
@@ -186,7 +183,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("PhoneCam — receiver")
         self.resize(1000, 680)
         self.worker = None
-        self._last_emit = 0.0
         self._info = {}
         self._restart_after_stop = False
         self.settings = QSettings("PhoneCam", "PhoneCam")
@@ -198,7 +194,6 @@ class MainWindow(QMainWindow):
         self.bridge = Bridge()
         self.bridge.sig_ready.connect(self.on_ready)
         self.bridge.sig_state.connect(self.on_state)
-        self.bridge.sig_frame.connect(self.on_frame)
         self.bridge.sig_vcam.connect(self.on_vcam)
         self.bridge.sig_log.connect(self.on_log)
         self.bridge.sig_stopped.connect(self.on_stopped)
@@ -211,7 +206,7 @@ class MainWindow(QMainWindow):
 
         self.hooks = pcserver.Hooks(
             on_state=lambda peer, st: self.bridge.sig_state.emit(peer, st),
-            on_frame=self._on_frame_worker,
+            on_frame=None,   # preview is the embedded browser -> skip ALL per-frame numpy work
             on_vcam=lambda ok, info: self.bridge.sig_vcam.emit(ok, info),
             on_ready=lambda info: self.bridge.sig_ready.emit(info),
             on_stats=lambda d: self.bridge.sig_stats.emit(d),
@@ -549,17 +544,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.on_log(f"Error {script}: {e}")
 
-    # ---------- worker callback (other thread) ----------
-    def _on_frame_worker(self, rgb):
-        if rgb is None:
-            self.bridge.sig_frame.emit(None)
-            return
-        now = time.monotonic()
-        if now - self._last_emit < 1 / 15:
-            return
-        self._last_emit = now
-        self.bridge.sig_frame.emit(np.ascontiguousarray(rgb[::2, ::2]))
-
     # ---------- GUI slots ----------
     @Slot(dict)
     def on_ready(self, info):
@@ -595,10 +579,6 @@ class MainWindow(QMainWindow):
         # status of the built-in aiortc path; browser mode is driven by relay/on_relay
         if st == "connecting":
             self.dot_phone.set("wait", "Connecting…")
-
-    @Slot(object)
-    def on_frame(self, rgb):
-        pass   # the preview is the embedded browser (QWebEngineView); aiortc drawing no longer needed
 
     @Slot(dict)
     def on_stats(self, d):
