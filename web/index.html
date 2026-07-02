@@ -737,8 +737,14 @@ async function buildControls(){
                  : (l.includes('back')||l.includes('rear')||l.includes('hát')) ? 'Back'
                  : null;
       if(!name) return;
-      const virt = l.includes('dual')||l.includes('triple');
-      if(!buckets[name] || (buckets[name].v && !virt)) buckets[name]={c, v:virt};
+      const virt = /dual|triple|tripla|dupla/.test(l);
+      // AUTO-MACRO (iOS swapping to the ultra-wide near a close subject) only works on a VIRTUAL
+      // back camera whose constituents include the ultra-wide (Triple / Dual-Wide). Pinning the
+      // bare physical wide lens kills it — so the 1× slot prefers that virtual camera, while
+      // every other slot still prefers the physical lens.
+      const macroVirt = /triple|tripla/.test(l) || (/dual|dupla/.test(l) && /wide|széles/.test(l));
+      const rank = name==='Back' ? (macroVirt?2 : !virt?1 : 0) : (!virt?1:0);
+      if(!buckets[name] || rank>buckets[name].r) buckets[name]={c, v:virt, r:rank};
     });
     // build the back-lens list with assumed base zoom factors (for dynamic switching)
     const baseFor={'0.5×':ULTRA_BASE,'Back':WIDE_BASE,'tele':teleBase};
