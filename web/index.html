@@ -1191,9 +1191,12 @@ sheetBackdrop.onclick=closeSheet;
 
 // ---- dim mode: black out the screen during long streams (the wake lock + stream stay on) ----
 function dimOn(){ if(!dimEl.hidden) return; dimEl.hidden=false;
+  preview.pause();                 // the preview is invisible under the overlay — stop decoding/
+                                   // compositing it (battery); the SENT track is fed elsewhere
   dimTimeEl.textContent=fmtElapsed()||'0:00';
   clearInterval(dimT); dimT=setInterval(()=>{ dimTimeEl.textContent=fmtElapsed()||'0:00'; },1000); }
-function dimOff(){ if(dimEl.hidden) return; dimEl.hidden=true; clearInterval(dimT); dimT=0; }
+function dimOff(){ if(dimEl.hidden) return; dimEl.hidden=true; clearInterval(dimT); dimT=0;
+  preview.play().catch(()=>{}); }
 dimBtn.onclick=()=>{ poke(); dimOn(); };
 dimEl.addEventListener('click',dimOff);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && sheet.classList.contains('open')) closeSheet(); });

@@ -19,7 +19,7 @@ import subprocess
 import sys
 import threading
 
-from PySide6.QtCore import Qt, QObject, Signal, Slot, QTimer, QSettings, QUrl
+from PySide6.QtCore import Qt, QObject, Signal, Slot, QTimer, QSettings, QUrl, QEvent
 from PySide6.QtGui import QPixmap, QFont, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QPushButton, QComboBox,
@@ -319,6 +319,8 @@ class MainWindow(QMainWindow):
         self.preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.preview.setHtml(_PREVIEW_PLACEHOLDER)   # dark placeholder, never a blank white page
         self._viewer_loaded = False
+        self._preview_url = ""
+        self._preview_parked = False
         mid.addWidget(self.preview, 1)
 
         side = self._side = QFrame()
@@ -571,8 +573,10 @@ class MainWindow(QMainWindow):
         # the embedded browser loads the viewer page (localhost, HTTP) -> this becomes the preview
         if not self._viewer_loaded and info.get("viewer_url"):
             local = info["viewer_url"].replace(info.get("ip", "x"), "127.0.0.1")
+            self._preview_url = local
             self.preview.load(QUrl(local))
             self._viewer_loaded = True
+            self._preview_parked = False
 
     @Slot(str, str)
     def on_state(self, peer, st):
@@ -676,6 +680,21 @@ class MainWindow(QMainWindow):
         if self._restart_after_stop:         # restart after backend switch / cert regen
             self._restart_after_stop = False
             QTimer.singleShot(150, self.start_server)
+
+    def changeEvent(self, e):
+        # While minimized nobody sees the preview, yet its WebRTC session keeps the PHONE
+        # encoding a whole extra stream (and this PC decoding + compositing it). Park the
+        # embedded viewer on minimize and reconnect on restore — the vcam bridge that feeds
+        # Discord is a separate connection and is unaffected.
+        if e.type() == QEvent.WindowStateChange and self._viewer_loaded:
+            if self.isMinimized():
+                if not self._preview_parked:
+                    self._preview_parked = True
+                    self.preview.setHtml(_PREVIEW_PLACEHOLDER)
+            elif self._preview_parked:
+                self._preview_parked = False
+                self.preview.load(QUrl(self._preview_url))
+        super().changeEvent(e)
 
     def _restyle(self, w):
         w.style().unpolish(w)
