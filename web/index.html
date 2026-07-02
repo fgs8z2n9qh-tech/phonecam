@@ -88,6 +88,19 @@
   .botrow .start{flex:1;margin:0}
   .morebtn{flex:0 0 auto;width:48px;border-radius:14px}
   .morebtn.on{background:var(--chip-on);border-color:var(--accent);color:var(--accent)}
+  /* small round Stop in the top-left corner: out of the thumb-rest zone so a mounted phone
+     isn't stopped by accident. Shown only while live; the big Start hides then. */
+  .stopcorner{width:40px;height:40px;flex:0 0 auto;border-radius:50%;display:none;
+    align-items:center;justify-content:center;font-size:14px;line-height:1;color:var(--bad);
+    background:rgba(248,81,73,.16);backdrop-filter:blur(8px);border:1px solid var(--bad)}
+  .stopcorner.show{display:flex}
+  .stopcorner:active{transform:scale(.92)}
+  #toggle.hide{display:none}
+  .ui.live .botrow{justify-content:flex-end}   /* Start gone -> push flash/gear to the corner */
+  /* dock caption: current quality shown while idle, so people know it before opening Settings */
+  .dockcap{font-size:11px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums;
+    padding:1px 2px 0;cursor:pointer}
+  .dockcap[hidden]{display:none}
 
   /* ALWAYS-VISIBLE vertical zoom on the right edge.
      CUSTOM touch slider (div track + thumb, driven by Pointer Events). A native <input range>
@@ -97,7 +110,8 @@
     transform:translateY(-50%);z-index:31;display:flex;flex-direction:column;align-items:center;gap:8px;
     padding:10px 6px;border-radius:999px;background:rgba(0,0,0,.40);backdrop-filter:blur(10px);
     border:1px solid var(--glass-line);touch-action:none}
-  .zchip{font:700 12px/1 ui-monospace,Menlo,monospace;color:#fff;min-width:36px;text-align:center}
+  .zchip{font:700 12px/1 ui-monospace,Menlo,monospace;color:#fff;min-width:36px;text-align:center;
+    cursor:pointer;padding:2px 0}   /* tap to jump to 1× (and tap again to restore the last zoom) */
   .vztrack{position:relative;height:42vh;max-height:300px;width:44px;border-radius:999px;
     touch-action:none;cursor:pointer;background:rgba(255,255,255,.10);overflow:hidden}
   .vzfill{position:absolute;left:0;right:0;bottom:0;height:var(--zp,0%);
@@ -252,6 +266,7 @@
 
   <div class="ui" id="ui">
     <div class="topbar" id="topbar">
+      <button class="stopcorner" id="stopBtn" aria-label="Stop streaming">■</button>
       <div class="pill"><span class="dot" id="dot"></span><span id="status">ready</span></div>
       <div class="topright">
         <div class="statbadge" id="badge" hidden></div>
@@ -288,6 +303,7 @@
 
     <!-- always-visible bottom dock: Start + More -->
     <div class="botdock" id="botdock">
+      <div class="dockcap" id="dockCap"></div>
       <div class="botrow">
         <button class="start" id="toggle">▶ Start</button>
         <!-- quick flash: only shown while live on a torch-capable camera -->
@@ -332,7 +348,7 @@
         </div>
 
         <div class="toggles" style="grid-template-columns:repeat(3,1fr)">
-          <button class="toggle" id="mirrorBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 7l-4 5 4 5"/><path d="M15 7l4 5-4 5"/></svg></span>Mirror</button>
+          <button class="toggle" id="mirrorBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 7l-4 5 4 5"/><path d="M15 7l4 5-4 5"/></svg></span>Mirror preview</button>
           <button class="toggle" id="rotateBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></span>Rotate 180°</button>
           <button class="toggle" id="focusBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>Focus</button>
         </div>
@@ -373,6 +389,7 @@ const preview=$('#preview'), srcVideo=$('#src'), dot=$('#dot'), statusEl=$('#sta
       autostartBtn=$('#autostartBtn'), snapBtn=$('#snapBtn'), focusring=$('#focusring'),
       moreBtn=$('#moreBtn'), reloadBtn=$('#reloadBtn'), dimBtn=$('#dimBtn'),
       dimEl=$('#dim'), dimTimeEl=$('#dimTime'), flashEl=$('#flash'),
+      stopBtn=$('#stopBtn'), dockCap=$('#dockCap'),
       gridBtn=$('#gridBtn'), levelBtn=$('#levelBtn'), adjResetBtn=$('#adjResetBtn'),
       adjBrightEl=$('#adjBright'), adjContrastEl=$('#adjContrast'), adjSatEl=$('#adjSat'), adjWarmthEl=$('#adjWarmth'),
       gridOv=$('#gridOv'), levelOv=$('#levelOv'), levelLine=$('#levelLine');
@@ -391,6 +408,7 @@ let facing='environment', deviceId=null;     // which camera
 let hideT=0;
 let rot180=false, autoBitrate=false, autostart=false, focusEnabled=false, wantMirror=false;
 let liveT0=0, logT=0, dimT=0;                 // session-start time · toast fade timer · dim clock timer
+let dimTipT=0, zoomChipPrev=null;             // one-shot dim-tip timer · zoom the chip-tap should restore
 // ---- dynamic lens (iOS-style): the zoom factor picks the physical lens, digital crop fills the gaps ----
 let backLenses=[], curBase=1, absZoom=1, autoLens=true;
 const ULTRA_BASE=0.5, WIDE_BASE=1, TELE_BASE=2;   // ultra-wide + wide are fixed; telephoto varies by model
@@ -602,14 +620,16 @@ async function applyZoom(abs, fromRelease){
     if(L && L.deviceId!==deviceId){
       const ok=await switchLensSeamless(L, abs);   // keeps the canvas/sender alive -> no black flash (rollback inside)
       if(!ok){ absZoom=curBase*zoom; syncZoomUI(); }   // blocked/failed -> the chip/thumb follow reality, not the wish
+      highlightActiveLens();                     // pill follows the lens actually streaming
       return;
     }
   }
   zoom=Math.max(1, abs/curBase);               // digital crop on the current lens
   if(running && needCanvas()!==usingCanvas) await updatePipeline();
+  if(fromRelease) highlightActiveLens();       // release that didn't switch -> clear any drag highlight
 }
 function selectLens(L){                         // manual lens pill -> jump to that lens at its native zoom
-  facing='environment'; absZoom=L.base; syncZoomUI();
+  zoomChipPrev=null; facing='environment'; absZoom=L.base; syncZoomUI();
   switchLensSeamless(L, L.base)                 // seamless if zoomed (canvas live), else rebuild
     .then(ok=>{ if(!ok){ absZoom=curBase*zoom; syncZoomUI(); } })   // failed -> undo the optimistic chip
     .catch(e=>log('reacquire: '+e.message));
@@ -723,12 +743,12 @@ async function buildControls(){
   try{ cams=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'); }catch{}
   lensrow.innerHTML='';
   const addChip=(label,on,fn)=>{ const b=document.createElement('button'); b.className='lens'+(on?' on':'');
-    b.textContent=label; b.onclick=()=>{ poke(); fn(); }; lensrow.appendChild(b); };
+    b.textContent=label; b.onclick=()=>{ poke(); fn(); }; lensrow.appendChild(b); return b; };
   const curId=camTrack&&camTrack.getSettings?camTrack.getSettings().deviceId:null;
   backLenses=[];
   const facingChips=()=>{
-    addChip('Front', facing==='user', ()=>{ deviceId=null; facing='user'; curBase=1; absZoom=1; zoom=1; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); });
-    addChip('Back', facing==='environment', ()=>{ deviceId=null; facing='environment'; curBase=1; absZoom=1; zoom=1; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); });
+    addChip('Front', facing==='user', ()=>{ deviceId=null; facing='user'; curBase=1; absZoom=1; zoom=1; zoomChipPrev=null; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); });
+    addChip('Back', facing==='environment', ()=>{ deviceId=null; facing='environment'; curBase=1; absZoom=1; zoom=1; zoomChipPrev=null; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); });
   };
   if(cams.length>1 && cams.some(c=>c.label)){
     // iOS exposes several (partly VIRTUAL) back cameras -> dedup by name + meaningful names,
@@ -755,10 +775,10 @@ async function buildControls(){
     ['0.5×','Back','tele'].forEach(n=>{ const b=buckets[n]; if(b) backLenses.push({name:n, base:baseFor[n], deviceId:b.c.deviceId, macro:b.r===2}); });
     backLenses.sort((a,b)=>a.base-b.base);
     const pillLbl={'0.5×':'0.5×','Back':'1×'};
-    backLenses.forEach(L=> addChip(L.name==='tele'?fmtx(teleBase):pillLbl[L.name], L.deviceId===curId, ()=>selectLens(L)) );
+    backLenses.forEach(L=>{ const b=addChip(L.name==='tele'?fmtx(teleBase):pillLbl[L.name], L.deviceId===curId, ()=>selectLens(L)); b._lens=L; });
     updateTeleRow(backLenses.some(L=>L.name==='tele'));
     if(buckets['Front']){ const f=buckets['Front'];
-      addChip('Front', facing==='user', ()=>{ deviceId=f.c.deviceId; facing='user'; curBase=1; absZoom=1; zoom=1; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); }); }
+      addChip('Front', facing==='user', ()=>{ deviceId=f.c.deviceId; facing='user'; curBase=1; absZoom=1; zoom=1; zoomChipPrev=null; syncZoomUI(); reacquire(true).catch(e=>log('reacquire: '+e.message)); }); }
     autoLens = backLenses.length>1;   // auto-switch only makes sense with multiple back lenses
     if(!backLenses.length){ lensrow.innerHTML=''; facingChips(); }   // not enough info -> front/back
   }else{
@@ -907,14 +927,15 @@ function adaptBitrate(lossPct){
 // ---- start / stop ----
 async function start(){
   if(!navigator.mediaDevices?.getUserMedia){ log('No camera access (HTTPS required).'); setState('error','bad'); return; }
-  zoom=1; absZoom=1; curBase=1; syncZoomUI();
+  zoom=1; absZoom=1; curBase=1; zoomChipPrev=null; syncZoomUI();
   setState('camera…','wait');
   try{ camStream=await getStream(); }
   catch(e){ log('Camera error: '+e.message+' — accept the certificate and the permission.'); setState('no camera','bad'); return; }
   camTrack=camStream.getVideoTracks()[0]; wireCamTrack(camTrack);
   preview.srcObject=camStream; try{ await preview.play(); }catch{}
   hint.hidden=true; running=true; liveT0=Date.now();
-  toggleBtn.textContent='■ Stop'; toggleBtn.classList.add('stop');
+  toggleBtn.classList.add('hide'); stopBtn.classList.add('show'); ui.classList.add('live');
+  updateDockCap();                     // hides the idle quality caption (the badge shows it live)
   snapBtn.hidden=false; dimBtn.hidden=false;
   reloadBtn.hidden=true;               // reloading mid-stream kills the session — offer it only when idle
   try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch{}
@@ -925,7 +946,13 @@ async function start(){
   startStatsLoop();
   poke();
   try{ if(!localStorage.getItem('phonecam.gh')){ localStorage.setItem('phonecam.gh','1');
-    log('Pinch to zoom · double-tap switches lens · hold to mirror', 6500); } }catch{}
+    log('Pinch to zoom · double-tap flips camera · hold to mirror', 6500); } }catch{}
+  // a single contextual nudge after a while, since dim mode is easy to miss
+  clearTimeout(dimTipT);
+  dimTipT=setTimeout(()=>{ if(!running || !dimEl.hidden) return;   // hidden behind the dim overlay -> don't burn the one-shot
+    try{ if(!localStorage.getItem('phonecam.tip.dim')){ localStorage.setItem('phonecam.tip.dim','1');
+      log('Tip: tap the moon to dim the screen — saves battery, the stream keeps running.', 6000); } }catch{}
+  }, 300000);
 }
 
 function sentTrack(){ return usingCanvas?canvasTrack:camTrack; }
@@ -938,18 +965,18 @@ function connect(){
   setState('connecting…','wait');
   closeAllViewers();
   ws=new WebSocket(`wss://${location.host}/relay`);     // multi-viewer signaling relay
-  ws.onopen=()=>{ ws.send(JSON.stringify({type:'hello', role:'sender', key:KEY})); setState('waiting for viewer…','wait'); sendBattery(); };
+  ws.onopen=()=>{ ws.send(JSON.stringify({type:'hello', role:'sender', key:KEY})); setState('waiting for PC…','wait'); sendBattery(); };
   ws.onmessage=async e=>{
     let m; try{ m=JSON.parse(e.data); }catch{ return; }
     if(m.type==='viewer-join'){ await addViewer(m.id); }
     else if(m.type==='viewer-leave'){ removeViewer(m.id); }
     else if(m.type==='answer'){ const v=viewers.get(m.from); if(v){ try{ await v.pc.setRemoteDescription({type:'answer',sdp:m.sdp}); }catch(err){ log('answer error: '+err.message); } } }
     else if(m.type==='ice'&&m.candidate){ const v=viewers.get(m.from); if(v){ try{ await v.pc.addIceCandidate(m.candidate); }catch{} } }
-    else if(m.type==='peer-gone'){ closeAllViewers(); setState('waiting for viewer…','wait'); }
-    else if(m.type==='denied'){ setState('access denied','bad');
-      log('Wrong/missing key — open the camera URL from the QR code.'); running=false; try{ws.close();}catch{} }
-    else if(m.type==='superseded'){ setState('replaced','bad');
-      log('Another phone connected — this one stopped.'); stop(); }
+    else if(m.type==='peer-gone'){ closeAllViewers(); setState('waiting for PC…','wait'); }
+    else if(m.type==='denied'){ stop();      // full teardown FIRST -> restores Start/Reload, no wedge
+      setState('access denied','bad'); log('Wrong/missing key — open the camera URL from the QR code.', 8000); }
+    else if(m.type==='superseded'){ stop();
+      setState('replaced','bad'); log('Another phone connected — this one stopped.', 8000); }
   };
   ws.onclose=()=>{ if(running){ setState('retrying…','wait'); reconnectTimer=setTimeout(()=>{ reconnectTimer=null; if(running) connect(); },1200); } };
   ws.onerror=()=>log('WebSocket error — is the server running?');
@@ -981,17 +1008,18 @@ function updateAggState(){
     if(st==='connected') conn=true; else if(st==='connecting'||st==='new') connecting=true;
   }
   if(conn){ const n=[...viewers.values()].filter(v=>v.pc.connectionState==='connected').length;
-    setState('LIVE · '+n+(n===1?' viewer':' viewers'),'live'); showBadge(); }
+    setState(n>1?('LIVE · '+n+' viewers'):'LIVE','live'); showBadge(); }   // 1 viewer = the PC; plain "LIVE"
   else if(connecting) setState('connecting…','wait');
-  else setState('waiting for viewer…','wait');
+  else setState('waiting for PC…','wait');
 }
 
 async function stop(){
   running=false; clearTimeout(camRetryTimer); camRetryDelay=800;   // a stale recovery must never race the next start()
-  toggleBtn.textContent='▶ Start'; toggleBtn.classList.remove('stop');
+  clearTimeout(dimTipT); zoomChipPrev=null;
+  toggleBtn.classList.remove('hide'); stopBtn.classList.remove('show'); ui.classList.remove('live');
   snapBtn.hidden=true; dimBtn.hidden=true; reloadBtn.hidden=false; dimOff(); liveT0=0;
   torchBtn.hidden=true; torchBtn.classList.remove('on');
-  stopStatsLoop();
+  stopStatsLoop(); updateDockCap();
   badge.hidden=true; setState('stopped'); log(''); ui.classList.remove('ui-hidden');
   try{ ws&&ws.close(); }catch{} closeAllViewers();
   stopCanvas();
@@ -1002,18 +1030,19 @@ async function stop(){
 }
 
 // ---- control events ----
-toggleBtn.onclick=()=>{ poke(); running?stop():start(); };
+toggleBtn.onclick=()=>{ poke(); if(!running) start(); };   // big button is Start-only now
+stopBtn.onclick=()=>{ poke(); if(running) stop(); };      // small corner button stops
 // zoom input is now a hidden state mirror only — the custom #vztrack slider drives zoom (see below)
 brEl.oninput=()=>{ setRange(brEl); poke(); brVal.textContent=(+brEl.value).toFixed(1)+' Mbps';
   if(!autoBitrate){ bitrateKbps=Math.round(+brEl.value*1000); if(running) applySenderParams(); }
   else autoTarget=Math.min(autoTarget, Math.round(+brEl.value*1000));   // the ceiling can drop immediately
-  saveSettings(); };
+  saveSettings(); updateDockCap(); };
 fpsBtn.onclick=async()=>{ poke(); const prev=fpsIdx; fpsIdx=(fpsIdx+1)%FPS.length; fpsLbl.textContent=FPS[fpsIdx]+' fps';
-  fpsBtn.classList.remove('capped'); fpsBtn.removeAttribute('title'); saveSettings();
-  if(running){ const ok=await reacquire(false); if(ok===false){ fpsIdx=prev; fpsLbl.textContent=FPS[fpsIdx]+' fps'; saveSettings(); reflectActualFps(); } } };
+  fpsBtn.classList.remove('capped'); fpsBtn.removeAttribute('title'); saveSettings(); updateDockCap();
+  if(running){ const ok=await reacquire(false); if(ok===false){ fpsIdx=prev; fpsLbl.textContent=FPS[fpsIdx]+' fps'; saveSettings(); updateDockCap(); reflectActualFps(); } } };
 resBtn.onclick=async()=>{ poke(); const prev=resIdx; resIdx=(resIdx+1)%RES.length; resLbl.textContent=RES_LBL[RES[resIdx]];
-  saveSettings();
-  if(running){ const ok=await reacquire(false); if(ok===false){ resIdx=prev; resLbl.textContent=RES_LBL[RES[resIdx]]; saveSettings(); } } };
+  saveSettings(); updateDockCap();
+  if(running){ const ok=await reacquire(false); if(ok===false){ resIdx=prev; resLbl.textContent=RES_LBL[RES[resIdx]]; saveSettings(); updateDockCap(); } } };
 function toggleMirror(){ const on=!preview.classList.contains('mirror');
   preview.classList.toggle('mirror',on); mirrorBtn.classList.toggle('on',on); saveSettings(); }
 mirrorBtn.onclick=()=>{ poke(); toggleMirror(); };
@@ -1097,9 +1126,16 @@ async function loadIce(){
   }catch{}
 }
 
-// ---- touch gestures over the image: pinch-zoom, double-tap=lens, long-press=mirror ----
-function cycleLens(){ const chips=[...lensrow.querySelectorAll('.lens')]; if(chips.length<2) return;
-  let i=chips.findIndex(c=>c.classList.contains('on')); chips[(i+1+chips.length)%chips.length].click(); }
+// ---- touch gestures over the image: pinch-zoom, double-tap=flip camera, long-press=mirror ----
+// double-tap flips front<->back (the muscle-memory gesture of every camera app); the lens pills
+// still pick a specific back lens.
+function flipCamera(){
+  if(!running || reacquiring) return;     // a restart already in flight -> don't desync facing/zoom from it
+  facing = (facing==='user') ? 'environment' : 'user';
+  deviceId=null; curBase=1; absZoom=1; zoom=1; zoomChipPrev=null; syncZoomUI();
+  reacquire(true).then(ok=>{ if(ok && facing==='environment') ensureMacroCam(); })
+    .catch(e=>log('reacquire: '+e.message));
+}
 let pinchDist0=0, pinchZoom0=1, lastTap=0, lpTimer=0, moved=false, startXY=null;
 function dist2(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
 preview.addEventListener('touchstart',e=>{
@@ -1112,6 +1148,7 @@ preview.addEventListener('touchmove',e=>{
     const z=Math.min(8,Math.max(zMin(), pinchZoom0*(dist2(e.touches)/pinchDist0)));
     zoomEl.value=z.toFixed(2); setRange(zoomEl); applyZoom(z, false);     // live crop during pinch
     if(typeof paintZoomThumb==='function') paintZoomThumb(zoomToFrac(z));  // edge thumb follows the pinch
+    highlightLensLive(z);                                                 // pills track the pinch too
     return; }
   if(startXY){ const dx=e.touches[0].clientX-startXY[0], dy=e.touches[0].clientY-startXY[1];
     if(Math.hypot(dx,dy)>12){ moved=true; clearTimeout(lpTimer); } }
@@ -1119,10 +1156,10 @@ preview.addEventListener('touchmove',e=>{
 preview.addEventListener('touchend',e=>{
   clearTimeout(lpTimer);
   if(e.touches.length>=1){ pinchDist0=0; return; }   // a finger is still left from the pinch
-  if(pinchDist0){ pinchDist0=0; startXY=null; applyZoom(absZoom, true); return; }  // pinch end -> may switch lens
+  if(pinchDist0){ pinchDist0=0; startXY=null; applyZoom(snapZoom(absZoom), true); return; }  // pinch end -> snap + maybe switch lens
   if(moved){ startXY=null; return; }
   const now=performance.now();
-  if(now-lastTap<300){ lastTap=0; cycleLens(); }       // double tap -> switch lens
+  if(now-lastTap<300){ lastTap=0; flipCamera(); }      // double tap -> flip front/back
   else { lastTap=now; if(focusEnabled && startXY) focusAt(startXY[0],startXY[1]); }
   startXY=null;
 },{passive:true});
@@ -1147,15 +1184,36 @@ function renderZoomTicks(){
 function syncZoomThumb(){ paintZoomThumb(zoomToFrac(absZoom));
   vztrack.setAttribute('aria-valuenow',(absZoom<10?absZoom.toFixed(1):Math.round(absZoom))); }
 
+// while dragging, light up the lens pill that WOULD be active at this zoom, so the slider
+// and the pills visibly belong together (and you can see the lens about to be picked on release)
+function highlightLensLive(abs){
+  if(facing!=='environment' || !(backLenses&&backLenses.length)) return;
+  const L=lensForZoom(abs);
+  lensrow.querySelectorAll('.lens').forEach(b=>{ if(b._lens) b.classList.toggle('on', !!L && b._lens.deviceId===L.deviceId); });
+}
+// post-release truth: light the pill of the lens ACTUALLY streaming (a drag that snaps back to the
+// current lens, or a failed switch, never runs buildControls — otherwise the drag highlight sticks)
+function highlightActiveLens(){
+  const curId=camTrack&&camTrack.getSettings?camTrack.getSettings().deviceId:null;
+  lensrow.querySelectorAll('.lens').forEach(b=>{ if(b._lens) b.classList.toggle('on', b._lens.deviceId===curId); });
+}
+// on release, snap to a lens's native factor if we let go near its tick (0.97× -> a clean 1×)
+function snapZoom(abs){
+  if(!(backLenses&&backLenses.length)) return abs;
+  const f=zoomToFrac(abs); let best=abs, bd=0.05;      // within ~5% of the track = snap
+  for(const L of backLenses){ const d=Math.abs(f-zoomToFrac(L.base)); if(d<bd){ bd=d; best=L.base; } }
+  return best;
+}
+
 let zoomRaf=0, zoomPendingAbs=null;
 function scheduleZoom(abs){ zoomPendingAbs=abs; if(zoomRaf) return;     // coalesce to one update / frame
   zoomRaf=requestAnimationFrame(()=>{ zoomRaf=0; const a=zoomPendingAbs; zoomPendingAbs=null;
-    paintZoomThumb(zoomToFrac(a)); applyZoom(a,false); }); }            // live crop only (no lens switch)
+    paintZoomThumb(zoomToFrac(a)); highlightLensLive(a); applyZoom(a,false); }); }   // live crop only (no lens switch)
 function ensureCanvasForDrag(){ if(running && !usingCanvas){ startCanvas(); preview.srcObject=canvasStream; } }
 function beginZoomDrag(){ zoomDragging=true; vztrack.classList.add('drag'); ensureCanvasForDrag(); }
 async function endZoomDrag(){ zoomDragging=false; vztrack.classList.remove('drag');
   if(zoomRaf){ cancelAnimationFrame(zoomRaf); zoomRaf=0; }
-  const finalAbs=(zoomPendingAbs!=null)?zoomPendingAbs:absZoom; zoomPendingAbs=null;
+  const finalAbs=snapZoom((zoomPendingAbs!=null)?zoomPendingAbs:absZoom); zoomPendingAbs=null;
   paintZoomThumb(zoomToFrac(finalAbs));
   await applyZoom(finalAbs,true);    // ONLY here may a lens switch / reacquire happen
   await updatePipeline();            // reconcile the pipeline once (drops canvas cleanly if back at 1×)
@@ -1177,6 +1235,17 @@ vztrack.addEventListener('keydown',e=>{ let d=0;
   e.preventDefault(); const f=Math.min(1,Math.max(0,zoomToFrac(absZoom)+d));
   paintZoomThumb(f); applyZoom(fracToZoom(f),true); });
 syncZoomThumb(); renderZoomTicks();
+
+// tap the zoom readout to jump straight back to 1× — tap again to restore the last zoom
+zoomVal.addEventListener('click',()=>{ if(!running) return; poke();
+  if(Math.abs(absZoom-1)<0.02){ if(zoomChipPrev>1.02){ const t=zoomChipPrev; zoomChipPrev=null; applyZoom(t,true); } }
+  else { zoomChipPrev=absZoom; applyZoom(1,true); } });
+
+// quality caption under the dock (idle only — the live badge shows the same thing while streaming)
+function updateDockCap(){ if(!dockCap) return;
+  dockCap.hidden = running;
+  dockCap.textContent = `${RES_LBL[RES[resIdx]]} · ${FPS[fpsIdx]} fps · ${(bitrateKbps/1000).toFixed(0)} Mbps`; }
+dockCap.addEventListener('click',()=>{ if(!running) openSheet(); });   // tap the caption -> open Settings
 
 // ---- controls: zoom + lens are always visible; the rest lives in the collapsible "More" sheet ----
 function poke(){}                                   // controls no longer auto-hide; nothing to do
@@ -1216,7 +1285,7 @@ autostartBtn.classList.toggle('on', autostart);
 adjBrightEl.value=adjBright; adjContrastEl.value=adjContrast; adjSatEl.value=adjSat; adjWarmthEl.value=adjWarmth;
 [adjBrightEl,adjContrastEl,adjSatEl,adjWarmthEl].forEach(setRange);
 gridBtn.classList.toggle('on', gridOn); showGrid(gridOn);
-syncZoomUI(); setRange(brEl); setState('ready');
+syncZoomUI(); setRange(brEl); setState('ready'); updateDockCap();
 loadIce();
 if(autostart){ setTimeout(()=>{ if(!running) start(); }, 400); }   // auto-start on load
 </script>
