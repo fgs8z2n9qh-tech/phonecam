@@ -390,7 +390,8 @@
           </div>
         </div>
 
-        <div class="toggles" style="grid-template-columns:repeat(3,1fr)">
+        <div class="toggles" style="grid-template-columns:repeat(2,1fr)">
+          <button class="toggle" id="detailBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.6-3.6M11 8v6M8 11h6"/></svg></span>Detail zoom</button>
           <button class="toggle" id="mirrorBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M9 7l-4 5 4 5"/><path d="M15 7l4 5-4 5"/></svg></span>Mirror preview</button>
           <button class="toggle" id="rotateBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></span>Rotate 180°</button>
           <button class="toggle" id="focusBtn" disabled><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>Focus</button>
@@ -428,7 +429,7 @@ const preview=$('#preview'), srcVideo=$('#src'), dot=$('#dot'), statusEl=$('#sta
       brEl=$('#bitrate'), brVal=$('#brVal'),
       fpsBtn=$('#fpsBtn'), fpsLbl=$('#fpsLbl'), resBtn=$('#resBtn'), resLbl=$('#resLbl'),
       torchBtn=$('#torchBtn'), mirrorBtn=$('#mirrorBtn'),
-      rotateBtn=$('#rotateBtn'), focusBtn=$('#focusBtn'), autoBrBtn=$('#autoBrBtn'),
+      rotateBtn=$('#rotateBtn'), focusBtn=$('#focusBtn'), autoBrBtn=$('#autoBrBtn'), detailBtn=$('#detailBtn'),
       autostartBtn=$('#autostartBtn'), snapBtn=$('#snapBtn'), focusring=$('#focusring'),
       moreBtn=$('#moreBtn'), reloadBtn=$('#reloadBtn'), dimBtn=$('#dimBtn'),
       dimEl=$('#dim'), dimTimeEl=$('#dimTime'), flashEl=$('#flash'),
@@ -458,6 +459,12 @@ let backLenses=[], curBase=1, absZoom=1, autoLens=true;
 const ULTRA_BASE=0.5, WIDE_BASE=1, TELE_BASE=2;   // ultra-wide + wide are fixed; telephoto varies by model
 // iOS Safari doesn't report a lens's optical zoom factor, so the telephoto factor is user-set (persisted).
 let teleBase=TELE_BASE;
+// ---- Detail zoom: capture the back sensor at its MAX resolution and CROP the output from that hi-res
+// frame (sensor-crop style) instead of upscaling a 1080p crop. Lossless up to (captureShort/outputShort)×
+// — e.g. 4K source -> 1080p out = a clean 2× (like the 48MP main camera's 2x). Opt-in (more battery, and
+// iOS may pick a lower fps for a 4K format). No-op if the device caps getUserMedia at the output size. ----
+let detailZoom=false;
+function detailZoomActive(){ return detailZoom && facing==='environment'; }
 // ---- image adjustments (baked into the SENT image) + framing overlays (preview only) ----
 let adjBright=1, adjContrast=1, adjSat=1, adjWarmth=0, gridOn=false, levelOn=false, orientHandler=null;
 const KEY=new URLSearchParams(location.search).get('k')||'';     // relay token (anti-hijack)
@@ -470,7 +477,7 @@ function saveSettings(){ try{ localStorage.setItem(LS, JSON.stringify({
   // (adaptBitrate lowering bitrateKbps) gets saved by any unrelated toggle and caps next launch
   resIdx, fpsIdx, bitrateKbps: autoBitrate ? Math.round(+brEl.value*1000) : bitrateKbps, facing,
   mirror:preview.classList.contains('mirror'), rot180, autoBitrate, autostart,
-  adjBright, adjContrast, adjSat, adjWarmth, gridOn, teleBase })); }catch{} }
+  adjBright, adjContrast, adjSat, adjWarmth, gridOn, teleBase, hiRes:detailZoom })); }catch{} }
 function loadSettings(){ try{
   const s=JSON.parse(localStorage.getItem(LS)||'{}');
   if(Number.isInteger(s.resIdx)&&s.resIdx>=0&&s.resIdx<RES.length) resIdx=s.resIdx;
@@ -486,6 +493,7 @@ function loadSettings(){ try{
   adjSat=clamp(s.adjSat,0,2,1); adjWarmth=clamp(s.adjWarmth,-1,1,0);
   if(typeof s.gridOn==='boolean') gridOn=s.gridOn;
   if([2,2.5,3,4,5].includes(s.teleBase)) teleBase=s.teleBase;
+  if(typeof s.hiRes==='boolean') detailZoom=s.hiRes;
 }catch{} }
 
 // toast: shows, then fades on its own; longer messages stay proportionally longer
@@ -513,12 +521,19 @@ async function getStream(){
   // at 60 fps: if the desired size is NOT 720p, try that first (1080p60 on newer phones),
   // then the 720p60 fallback. At 720p / <60, a single size attempt is enough.
   const sized = (want>=60 && !(w===1280&&h===720)) ? [fullSize, hdSize] : [ want>=60 ? hdSize : fullSize ];
+  // Detail zoom: try the sensor's MAX resolution FIRST (ideal, so it degrades to whatever the device
+  // actually offers — 4K on capable iPhones, else 1080p, never an error). The output is downscaled +
+  // cropped from it, so a bigger source = sharper zoom. Only for the back camera.
+  const hi = detailZoomActive();
+  const maxSize={ width:{ideal:4096}, height:{ideal:2160}, frameRate:fr };
   const attempts=[];
   if(deviceId){
+    if(hi) attempts.push(Object.assign({deviceId:{exact:deviceId}}, maxSize));
     for(const s of sized) attempts.push(Object.assign({deviceId:{exact:deviceId}}, s));
     attempts.push(Object.assign({deviceId:{exact:deviceId}}, noFps));   // size, without fps
     attempts.push({deviceId:{exact:deviceId}});                         // just the lens, WITHOUT constraints (ultra-wide!)
   }
+  if(hi) attempts.push(Object.assign({facingMode:{ideal:facing}}, maxSize));
   for(const s of sized) attempts.push(Object.assign({facingMode:{ideal:facing}}, s));
   attempts.push(Object.assign({facingMode:{ideal:facing}}, noFps));     // size, without fps
   attempts.push({facingMode:{ideal:facing}});                          // just the side, WITHOUT constraints
@@ -531,13 +546,26 @@ async function getStream(){
   throw lastErr || new Error('getUserMedia');
 }
 
+// output/canvas size for a given source frame: the raw source size normally, or (detail zoom) the
+// chosen resolution's SHORT side on the source aspect, so the hi-res sensor feed is DOWNSCALED to the
+// sent resolution. Shared by startCanvas (so the captureStream is born downscaled — never a 4K frame
+// reaches the encoder) AND drawLoop (steady state).
+function outputSize(sw, sh){
+  if(!detailZoomActive() || !sw || !sh) return [sw||1280, sh||720];
+  const shortOut=Math.min.apply(null, RES[resIdx].split('x').map(Number));
+  let cw, ch;
+  if(sw>=sh){ ch=Math.min(sh, shortOut); cw=Math.round(ch*sw/sh); }
+  else       { cw=Math.min(sw, shortOut); ch=Math.round(cw*sh/sw); }
+  cw-=cw%2; ch-=ch%2; return [Math.max(2,cw), Math.max(2,ch)];
+}
 // ---- update the track that's actually sent (zoom: canvas or direct) ----
 function startCanvas(){
   if(usingCanvas || !camTrack) return;
   usingCanvas=true;
   const st=camTrack.getSettings();
+  const [cw0,ch0]=outputSize(st.width||1280, st.height||720);   // detail zoom: born downscaled, not 4K
   canvas=canvas||document.createElement('canvas');
-  canvas.width=st.width||1280; canvas.height=st.height||720;
+  canvas.width=cw0; canvas.height=ch0;
   cctx=canvas.getContext('2d',{alpha:false});
   srcVideo.srcObject=camStream; srcVideo.play().catch(()=>{});
   canvasStream=canvas.captureStream(FPS[fpsIdx]);
@@ -564,8 +592,12 @@ function drawLoop(){
     // size the canvas to the ACTUAL video frame (orientation-correct). getSettings() can report
     // the sensor's native (portrait) dims while the real frames are landscape -> drawing into a
     // mismatched canvas squished the image. Match the real frame -> aspect ratio always correct.
-    if(canvas.width!==vw || canvas.height!==vh){ canvas.width=vw; canvas.height=vh; }
-    const sw=vw/zoom, sh=vh/zoom, sx=(vw-sw)/2, sy=(vh-sh)/2;
+    // DETAIL ZOOM caps the output to the chosen resolution's short side (source aspect kept), so the
+    // crop is taken from the HIGH-RES source and downscaled — sharp until zoom exceeds captureShort/
+    // outputShort. Otherwise the canvas matches the frame 1:1 (unchanged behaviour).
+    const [cw,ch]=outputSize(vw,vh);
+    if(canvas.width!==cw || canvas.height!==ch){ canvas.width=cw; canvas.height=ch; }
+    const sw=vw/zoom, sh=vh/zoom, sx=(vw-sw)/2, sy=(vh-sh)/2;   // crop region from the (hi-res) source
     try{
       cctx.filter = filtersActive() ? `brightness(${adjBright}) contrast(${adjContrast}) saturate(${adjSat})` : 'none';
       if(rot180){                                  // the SENT image should rotate too (phone mounted upside down)
@@ -584,8 +616,10 @@ function drawLoop(){
     }catch{}
   }
 }
-// the canvas is used if zoom, rotation OR image adjustments are active (the raw track can't do these)
-function needCanvas(){ return zoom>1.001 || rot180 || filtersActive(); }
+// the canvas is used if zoom, rotation, image adjustments OR detail zoom are active. Detail zoom
+// forces the canvas even at 1× so the hi-res sensor feed is downscaled to the chosen output size
+// (otherwise the raw 4K track would be sent directly — huge bandwidth).
+function needCanvas(){ return zoom>1.001 || rot180 || filtersActive() || detailZoomActive(); }
 async function updatePipeline(){
   if(!running) return;
   if(reacquiring) return;           // a camera restart is mid-flight: camTrack/camStream are momentarily the
@@ -748,6 +782,10 @@ async function reacquire(switchCam=false){
   camStream=fresh; camTrack=fresh.getVideoTracks()[0]; wireCamTrack(camTrack);
   if(usingCanvas){
     stopCanvas(); startCanvas();                 // new track -> fresh canvas (size/fps refreshes)
+    await replaceTrackAll(canvasTrack);
+    preview.srcObject=canvasStream;
+  }else if(needCanvas()){                         // e.g. detail zoom just turned on / switched to the back
+    startCanvas();                                // lens -> must downscale the hi-res feed, not send it raw
     await replaceTrackAll(canvasTrack);
     preview.srcObject=canvasStream;
   }else{
@@ -916,9 +954,12 @@ function fmtElapsed(){ if(!liveT0) return '';
 function fmtMbps(v){ return v<10 ? v.toFixed(1) : String(Math.round(v)); }
 function showBadge(){
   const t=camTrack&&camTrack.getSettings?camTrack.getSettings():{};
+  let w=t.width, h=t.height;
+  // detail zoom: camTrack is the 4K capture, but the SENT track is the downscaled canvas — show that
+  if(detailZoomActive() && usingCanvas && canvas){ w=canvas.width; h=canvas.height; }
   const el=fmtElapsed();
   badge.hidden=false;
-  badge.innerHTML=`${t.width||'?'}×${t.height||'?'} · ${Math.round(t.frameRate||0)}fps<br>`+
+  badge.innerHTML=`${w||'?'}×${h||'?'} · ${Math.round(t.frameRate||0)}fps<br>`+
     `${fmtMbps(bitrateKbps/1000)}Mbps${el?(' · '+el):''}`;
 }
 
@@ -1060,12 +1101,18 @@ function connect(){
 }
 
 // a separate PeerConnection for each viewer (app preview + OBS at the same time)
-async function addViewer(id){
+async function addViewer(id, attempt=0){
   removeViewer(id);
   if(!camTrack || camTrack.readyState!=='live'){ try{ await reacquire(); }catch{} }
   if(usingCanvas && (!canvasTrack || canvasTrack.readyState!=='live')){ stopCanvas(); startCanvas(); }
   const tr=sentTrack();
-  if(!tr || tr.readyState!=='live'){ log('No live camera track'); return; }
+  if(!tr || tr.readyState!=='live'){
+    // a camera restart is probably mid-flight (reacquire blocked by its own guard, e.g. a lens flip) ->
+    // retry shortly instead of stranding this viewer black for the whole session
+    if(running && attempt<8){ setTimeout(()=>{ if(running && !viewers.has(id)) addViewer(id, attempt+1); }, 300); }
+    else log('No live camera track');
+    return;
+  }
   const pc=new RTCPeerConnection({iceServers});
   pc.onicecandidate=e=>{ if(e.candidate&&ws&&ws.readyState===1) ws.send(JSON.stringify({type:'ice', to:id, candidate:e.candidate})); };
   pc.onconnectionstatechange=()=>{ updateAggState(); };
@@ -1132,6 +1179,21 @@ rotateBtn.onclick=async()=>{ poke(); rot180=!rot180; rotateBtn.classList.toggle(
 focusBtn.onclick=()=>{ poke(); if(focusBtn.disabled) return;
   focusEnabled=!focusEnabled; focusBtn.classList.toggle('on',focusEnabled);
   log(focusEnabled?'Tap the image to focus.':''); };
+// Detail zoom: re-open the back camera at its max resolution and crop the output from that hi-res
+// frame. Reports the ACTUAL capture size the device gave, so it's clear whether it helped.
+detailBtn.onclick=async()=>{ poke(); detailZoom=!detailZoom; detailBtn.classList.toggle('on',detailZoom); saveSettings();
+  if(detailZoom && facing!=='environment'){ log('Detail zoom applies to the back camera.',4000); }
+  if(!running) return;
+  const ok=await reacquire(false);                 // re-open at the new (hi-res / normal) resolution
+  if(ok===false || !running) return;
+  await updatePipeline();                           // detail zoom forces the canvas -> reconcile once
+  if(detailZoomActive()){
+    const st=camTrack&&camTrack.getSettings?camTrack.getSettings():{};
+    const cw=st.width||0, ch=st.height||0, capShort=Math.min(cw,ch);
+    const outShort=Math.min.apply(null, RES[resIdx].split('x').map(Number));
+    log(capShort>outShort ? `Detail zoom on — capturing ${cw}×${ch} (~${(capShort/outShort).toFixed(1)}× lossless zoom)`
+                          : `Detail zoom on, but this device caps capture at ${cw}×${ch}`, 6000);
+  } };
 autoBrBtn.onclick=()=>{ poke(); autoBitrate=!autoBitrate; autoBrBtn.classList.toggle('on',autoBitrate);
   autoTarget=bitrateKbps; saveSettings(); };
 autostartBtn.onclick=()=>{ poke(); autostart=!autostart; autostartBtn.classList.toggle('on',autostart); saveSettings(); };
@@ -1368,6 +1430,7 @@ preview.classList.toggle('mirror', wantMirror); mirrorBtn.classList.toggle('on',
 preview.classList.toggle('rot180', rot180); rotateBtn.classList.toggle('on', rot180);
 autoBrBtn.classList.toggle('on', autoBitrate);
 autostartBtn.classList.toggle('on', autostart);
+detailBtn.classList.toggle('on', detailZoom);
 adjBrightEl.value=adjBright; adjContrastEl.value=adjContrast; adjSatEl.value=adjSat; adjWarmthEl.value=adjWarmth;
 [adjBrightEl,adjContrastEl,adjSatEl,adjWarmthEl].forEach(setRange);
 gridBtn.classList.toggle('on', gridOn); showGrid(gridOn);
