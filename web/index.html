@@ -422,7 +422,9 @@ let iceServers=[{urls:'stun:stun.l.google.com:19302'}];          // /ice can ove
 // ---- persist settings (the page often needs reloading because of the cache) ----
 const LS='phonecam.v1';
 function saveSettings(){ try{ localStorage.setItem(LS, JSON.stringify({
-  resIdx, fpsIdx, bitrateKbps, facing,
+  // persist the user's slider CEILING, not the live auto-adapted value — else a congestion dip
+  // (adaptBitrate lowering bitrateKbps) gets saved by any unrelated toggle and caps next launch
+  resIdx, fpsIdx, bitrateKbps: autoBitrate ? Math.round(+brEl.value*1000) : bitrateKbps, facing,
   mirror:preview.classList.contains('mirror'), rot180, autoBitrate, autostart,
   adjBright, adjContrast, adjSat, adjWarmth, gridOn, teleBase })); }catch{} }
 function loadSettings(){ try{
@@ -925,6 +927,15 @@ function adaptBitrate(lossPct){
 }
 
 // ---- start / stop ----
+// iOS auto-RELEASES a screen wake lock every time the page is hidden (app-switch, Control Center,
+// call banner). Re-arm it: onrelease nulls the sentinel so visibilitychange can re-request it,
+// otherwise the phone idle-locks mid-session and the camera track ends -> the stream drops.
+async function acquireWakeLock(){
+  if(wakeLock) return;
+  try{ wakeLock=await navigator.wakeLock?.request('screen');
+    if(wakeLock) wakeLock.onrelease=()=>{ wakeLock=null; };
+  }catch{ wakeLock=null; }
+}
 async function start(){
   if(!navigator.mediaDevices?.getUserMedia){ log('No camera access (HTTPS required).'); setState('error','bad'); return; }
   zoom=1; absZoom=1; curBase=1; zoomChipPrev=null; syncZoomUI();
@@ -938,7 +949,7 @@ async function start(){
   updateDockCap();                     // hides the idle quality caption (the badge shows it live)
   snapBtn.hidden=false; dimBtn.hidden=false;
   reloadBtn.hidden=true;               // reloading mid-stream kills the session — offer it only when idle
-  try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch{}
+  await acquireWakeLock();
   await buildControls();
   await ensureMacroCam();          // hop off a non-macro physical wide if Safari handed us one
   if(needCanvas()){ startCanvas(); preview.srcObject=canvasStream; }   // persisted rotation/zoom onto the sent image
@@ -1268,8 +1279,16 @@ function dimOff(){ if(dimEl.hidden) return; dimEl.hidden=true; clearInterval(dim
   preview.play().catch(()=>{}); }
 dimBtn.onclick=()=>{ poke(); dimOn(); };
 dimEl.addEventListener('click',dimOff);
+// the preview <video> has autoplay, so ANY srcObject reassignment (reacquire / updatePipeline /
+// a camera-recovery reconcile behind the overlay) resumes decoding and silently undoes dim mode's
+// battery saving. Catch every resume in one place: if we're dimmed, pause straight back.
+preview.addEventListener('play',()=>{ if(!dimEl.hidden) preview.pause(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && sheet.classList.contains('open')) closeSheet(); });
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden && running && (!camTrack||camTrack.readyState!=='live')) reacquire().catch(()=>{}); });
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden || !running) return;
+  if(!camTrack || camTrack.readyState!=='live') reacquire().catch(()=>{});
+  acquireWakeLock();     // the wake lock was dropped while hidden -> re-arm it (else the phone sleeps)
+});
 
 // init
 reloadBtn.onclick=()=>location.reload();

@@ -20,7 +20,7 @@
 // Does NOT call getUserMedia -> no HTTPS needed. Browser-native (HARDWARE) decode.
 const v = document.getElementById('v');
 const msg = document.getElementById('msg');
-let pc = null, ws = null;
+let pc = null, ws = null, recoverT = 0;
 const KEY = new URLSearchParams(location.search).get('k') || '';
 let iceServers = [{urls:'stun:stun.l.google.com:19302'}];
 
@@ -39,11 +39,19 @@ function freshPC(){
   pc.ontrack = e => { v.srcObject = e.streams[0]; v.play().catch(()=>{}); show(''); };
   pc.onconnectionstatechange = () => {
     const st = pc.connectionState;
-    if(st==='connected') show('');
-    else if(st==='failed' || st==='disconnected'){ show('Reconnecting…'); }
+    if(st==='connected'){ clearTimeout(recoverT); recoverT=0; show(''); }
+    else if(st==='failed'){ show('Reconnecting…'); recoverConnection(); }   // terminal -> rebuild now
+    else if(st==='disconnected'){ show('Reconnecting…');                    // may self-heal; grace then rebuild
+      clearTimeout(recoverT);
+      recoverT=setTimeout(()=>{ const s=pc&&pc.connectionState;
+        if(s==='disconnected'||s==='failed') recoverConnection(); }, 4000); }
   };
   return pc;
 }
+// The media/ICE path can die while the signaling WebSocket stays open — but the sender only offers
+// on a fresh 'viewer-join', so a stuck viewer would freeze forever. Drop the WS so the onclose
+// reconnect loop re-registers us (new hello -> viewer-join -> fresh offer).
+function recoverConnection(){ try{ ws && ws.close(); }catch{} }
 
 async function onOffer(sdp){
   freshPC();
@@ -62,7 +70,7 @@ function connect(){
     else if(m.type==='ice' && m.candidate){ try{ await pc.addIceCandidate(m.candidate); }catch{} }
     else if(m.type==='peer-gone'){ show('The phone disconnected…'); try{ pc&&pc.close(); }catch{} pc=null; v.srcObject=null; }
   };
-  ws.onclose = () => { show('Server…'); setTimeout(connect, 1500); };
+  ws.onclose = () => { clearTimeout(recoverT); recoverT=0; show('Server…'); setTimeout(connect, 1500); };
   ws.onerror = () => {};
 }
 loadIce().finally(connect);

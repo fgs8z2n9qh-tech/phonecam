@@ -138,10 +138,18 @@ class VCamSink:
         self.on_vcam = on_vcam  # callback(ok: bool, info: str)
 
     def configure(self, width, height, fps):
-        """Set the vcam dimensions BEFORE it's lazily created (from the first real frame),
-        so the virtual camera matches the phone's native resolution/fps instead of a fixed 720p30."""
+        """Set the vcam dimensions BEFORE it's lazily created (from the first real frame), so the
+        virtual camera matches the phone's native resolution/fps instead of a fixed 720p30.
+        If a LATER stream needs DIFFERENT dimensions (phone reconnects at a new resolution, or
+        rotates portrait<->landscape), close the existing camera so send_rgb re-opens it at the new
+        size — otherwise pyvirtualcam.send() raises a shape mismatch on EVERY frame and Discord/OBS
+        freeze on the last old-resolution frame until the server is restarted."""
+        w, h, f = int(width), int(height), int(fps)
+        if self.cam is not None and (w, h) != (self.width, self.height):
+            log.info("vcam resolution changed %dx%d -> %dx%d: recreating", self.width, self.height, w, h)
+            self.close()
         if self.cam is None:
-            self.width, self.height, self.fps = int(width), int(height), int(fps)
+            self.width, self.height, self.fps = w, h, f
 
     def send_rgb(self, rgb):
         if self._failed:

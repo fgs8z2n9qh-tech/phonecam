@@ -146,6 +146,7 @@ class ServerWorker(threading.Thread):
         self.args, self.hooks, self.bridge = args, hooks, bridge
         self.loop = None
         self.stop_event = None
+        self._stop_requested = False   # set by stop() even before the loop/event exist (lost-wakeup guard)
 
     def run(self):
         import asyncio
@@ -165,12 +166,15 @@ class ServerWorker(threading.Thread):
     async def _main(self):
         import asyncio
         self.stop_event = asyncio.Event()
+        if self._stop_requested:            # a stop() that landed before the event existed -> honour it now
+            self.stop_event.set()
         ip = pcserver.lan_ip()
         ssl_ctx = pcserver.build_ssl(self.args.cert, self.args.key)
         await pcserver.serve(self.args, ssl_ctx, ip, self.hooks, self.stop_event)
         self.bridge.sig_stopped.emit("")
 
     def stop(self):
+        self._stop_requested = True         # unconditional: covers the gap before loop/stop_event are set
         if self.loop and self.stop_event:
             try:
                 self.loop.call_soon_threadsafe(self.stop_event.set)
@@ -576,6 +580,7 @@ class MainWindow(QMainWindow):
     def _reset_idle_ui(self):
         self.btn_start.setText("▶  Start")
         self.btn_start.setProperty("running", "false")
+        self.btn_start.setEnabled(True)          # re-enable after the transitional teardown state
         self._restyle(self.btn_start)
         self.dot_server.set("off")
         self.dot_phone.set("off")
@@ -585,9 +590,18 @@ class MainWindow(QMainWindow):
     def stop_server(self, then_restart=False):
         # chain the restart to the actual teardown (on_stopped) -> no port race
         self._restart_after_stop = then_restart
-        if self.worker:
+        if self.worker and self.worker.is_alive():
             self.worker.stop()
-        self._reset_idle_ui()
+            # transitional state until on_stopped fires: disable the button so a click during the
+            # ~200-400ms teardown can't issue a plain stop that clobbers a pending restart
+            self.btn_start.setEnabled(False)
+            self.btn_start.setText("↻  Restarting…" if then_restart else "■  Stopping…")
+            self._restyle(self.btn_start)
+            self.dot_server.set("wait")
+            self.dot_phone.set("off")
+            self.dot_vcam.set("off")
+        else:
+            self._reset_idle_ui()
 
     def _backup_cert(self):
         for f in ("cert.pem", "key.pem"):
@@ -605,9 +619,12 @@ class MainWindow(QMainWindow):
             self.stop_server(then_restart=True)
 
     def regen_cert(self):
+        if getattr(self, "_cert_generating", False):
+            return                                # a keygen is already in flight
         was = bool(self.worker and self.worker.is_alive())
         self._backup_cert()                       # back up before overwrite (never delete without a backup)
         self.on_log("Regenerating certificate…")
+        self._cert_generating = True              # block a concurrent start from reading a half-written pair
 
         def _gen():
             try:
@@ -620,6 +637,7 @@ class MainWindow(QMainWindow):
 
     @Slot(bool)
     def _after_regen(self, was):
+        self._cert_generating = False
         self.on_log("Certificate regenerated (old: *.bak).")
         if was:
             self.stop_server(then_restart=True)
@@ -774,10 +792,11 @@ class MainWindow(QMainWindow):
         if self.worker:                      # the worker has fully stopped -> cleanup
             self.worker.join(timeout=2)
             self.worker = None
-        self._reset_idle_ui()
         if self._restart_after_stop:         # restart after backend switch / cert regen
             self._restart_after_stop = False
-            QTimer.singleShot(150, self.start_server)
+            QTimer.singleShot(150, self.start_server)   # keep the "Restarting…" state until it relaunches
+        else:
+            self._reset_idle_ui()
 
     def changeEvent(self, e):
         # While minimized nobody sees the preview, yet its WebRTC session keeps the PHONE
@@ -799,7 +818,14 @@ class MainWindow(QMainWindow):
         w.style().polish(w)
 
     def closeEvent(self, e):
+        # briefly wait for the worker's teardown so serve()'s finally can withdraw the mDNS
+        # record and close the runners cleanly (daemon thread would otherwise be killed mid-teardown)
         self.stop_server()
+        if self.worker:
+            try:
+                self.worker.join(timeout=2)
+            except Exception:
+                pass
         e.accept()
 
 
