@@ -74,10 +74,14 @@
     border:1px solid var(--glass-line);box-shadow:var(--shadow)}
   .hint-ic{width:66px;height:66px;border-radius:20px;display:flex;align-items:center;justify-content:center;
     background:rgba(63,185,80,.13);border:1px solid rgba(63,185,80,.32);color:var(--accent)}
+  .hint-ic.bad{background:rgba(248,81,73,.13);border-color:rgba(248,81,73,.34);color:var(--bad)}
   .hint-ic svg{width:34px;height:34px}
   .hint-t{font-size:17px;font-weight:700;color:var(--txt);letter-spacing:.2px}
   .hint-s{font-size:13px;line-height:1.55;color:var(--muted)}
   .hint-s b{color:var(--txt)}
+  /* the pointer-events:none .hint container lets taps fall through to Start; but the denied card's
+     own steps should be readable/selectable — the card itself re-enables events */
+  #denied .hint-card{pointer-events:auto}
 
   /* ALWAYS-VISIBLE bottom dock: lens pills + Start + More (frequently used stuff stays fixed) */
   .botdock{position:absolute;left:0;right:0;bottom:0;z-index:31;display:flex;flex-direction:column;gap:8px;
@@ -86,21 +90,22 @@
     background:linear-gradient(to top, rgba(7,9,13,.82), rgba(7,9,13,0))}
   .botrow{display:flex;gap:8px;align-items:stretch}
   .botrow .start{flex:1;margin:0}
-  .morebtn{flex:0 0 auto;width:48px;border-radius:14px}
+  .morebtn{flex:0 0 auto;width:48px;border-radius:14px;transition:background .18s,border-color .18s,color .18s}
   .morebtn.on{background:var(--chip-on);border-color:var(--accent);color:var(--accent)}
   /* small round Stop in the top-left corner: out of the thumb-rest zone so a mounted phone
      isn't stopped by accident. Shown only while live; the big Start hides then. */
   .stopcorner{width:40px;height:40px;flex:0 0 auto;border-radius:50%;display:none;
     align-items:center;justify-content:center;font-size:14px;line-height:1;color:var(--bad);
-    background:rgba(248,81,73,.16);backdrop-filter:blur(8px);border:1px solid var(--bad)}
+    background:rgba(248,81,73,.16);backdrop-filter:blur(8px);border:1px solid rgba(248,81,73,.55)}
   .stopcorner.show{display:flex}
   .stopcorner:active{transform:scale(.92)}
   #toggle.hide{display:none}
   .ui.live .botrow{justify-content:flex-end}   /* Start gone -> push flash/gear to the corner */
   /* dock caption: current quality shown while idle, so people know it before opening Settings */
   .dockcap{font-size:11px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums;
-    padding:1px 2px 0;cursor:pointer}
+    padding:1px 2px 0;padding-right:56px;cursor:pointer}   /* right-pad centers the text over the Start box */
   .dockcap[hidden]{display:none}
+  .dockcap:active{opacity:.6}
 
   /* ALWAYS-VISIBLE vertical zoom on the right edge.
      CUSTOM touch slider (div track + thumb, driven by Pointer Events). A native <input range>
@@ -108,10 +113,11 @@
      to the wrong axis -> jumpy/jittery dragging. A plain div tracks the finger 1:1, no glitches. */
   .zoomdock{position:absolute;right:calc(env(safe-area-inset-right,0px) + 8px);top:46%;
     transform:translateY(-50%);z-index:31;display:flex;flex-direction:column;align-items:center;gap:8px;
-    padding:10px 6px;border-radius:999px;background:rgba(0,0,0,.40);backdrop-filter:blur(10px);
-    border:1px solid var(--glass-line);touch-action:none}
+    padding:10px 6px;border-radius:999px;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);
+    border:1px solid var(--glass-line);touch-action:none}   /* same glass recipe as the other edge controls */
   .zchip{font:700 12px/1 ui-monospace,Menlo,monospace;color:#fff;min-width:36px;text-align:center;
     cursor:pointer;padding:2px 0}   /* tap to jump to 1× (and tap again to restore the last zoom) */
+  .zchip:active{transform:scale(.9)}
   .vztrack{position:relative;height:42vh;max-height:300px;width:44px;border-radius:999px;
     touch-action:none;cursor:pointer;background:rgba(255,255,255,.10);overflow:hidden}
   .vzfill{position:absolute;left:0;right:0;bottom:0;height:var(--zp,0%);
@@ -167,8 +173,10 @@
     max-height:64vh;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .lensrow::-webkit-scrollbar{display:none}
   .lens{flex:0 0 auto;padding:8px 14px;border-radius:999px;font-weight:650;font-size:13px;text-align:center;
-    background:rgba(0,0,0,.5);backdrop-filter:blur(8px);border:1px solid var(--glass-line);color:var(--txt)}
+    background:rgba(0,0,0,.5);backdrop-filter:blur(8px);border:1px solid var(--glass-line);color:var(--txt);
+    transition:background .18s,border-color .18s,color .18s,transform .1s}
   .lens.on{background:var(--chip-on);border-color:var(--accent);color:var(--accent)}
+  .lens:active{transform:scale(.95)}
 
   .ctrl-row{display:flex;flex-direction:column;gap:1px}
   .ctrl-head{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
@@ -183,10 +191,12 @@
   .toggles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
   .toggle{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
     padding:6px 3px;border-radius:13px;background:var(--chip);border:1px solid var(--glass-line);
-    font-size:10px;font-weight:600;color:var(--muted);min-height:46px}
+    font-size:10px;font-weight:600;color:var(--muted);min-height:46px;
+    transition:background .18s,border-color .18s,color .18s,transform .1s}
   .toggle .ic{display:flex;align-items:center;justify-content:center;height:18px}
   .toggle .ic svg{width:18px;height:18px}
   .toggle.on{background:var(--chip-on);border-color:var(--accent);color:var(--accent)}
+  .toggle:not(:disabled):active{transform:scale(.96)}
   .toggle:disabled{opacity:.32}
   /* the lens/resolution can't reach the requested fps -> show the real max in amber */
   .toggle.capped{background:rgba(210,153,34,.16);border-color:#d29922;color:#e3b341}
@@ -200,7 +210,9 @@
   /* framing overlays (preview only, not sent) */
   .grid-ov{position:fixed;inset:0;z-index:24;width:100%;height:100%;pointer-events:none}
   .grid-ov[hidden]{display:none}
-  .grid-ov path{stroke:rgba(255,255,255,.5);stroke-width:1;fill:none;vector-effect:non-scaling-stroke}
+  /* dark drop-shadow so the framing grid stays visible over bright/white video (like .level-line) */
+  .grid-ov path{stroke:rgba(255,255,255,.6);stroke-width:1;fill:none;vector-effect:non-scaling-stroke;
+    filter:drop-shadow(0 0 1px rgba(0,0,0,.75))}
   .level-ov{position:fixed;inset:0;z-index:24;pointer-events:none;display:flex;align-items:center;justify-content:center}
   .level-ov[hidden]{display:none}
   .level-line{width:46%;height:2px;border-radius:2px;background:rgba(255,255,255,.75);
@@ -257,7 +269,11 @@
     .toggle .ic svg{ width:18px; height:18px; }
     .hint-card{ margin-bottom:56px; }
   }
-  @media (prefers-reduced-motion: reduce){ .sheet{transition:opacity .2s} .dot.live{animation:none} }
+  @media (prefers-reduced-motion: reduce){
+    .sheet{transition:opacity .2s} .dot.live{animation:none}
+    .focusring.show{animation:none} .log{transition:opacity .2s}   /* no focus-pop / toast slide */
+    .lens,.toggle,.morebtn{transition:none}                        /* recolor snaps instead of easing */
+  }
 </style>
 </head>
 <body>
@@ -281,6 +297,16 @@
         <div class="hint-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h1.7l.9-1.6A2 2 0 0 1 10.3 4.5h3.4a2 2 0 0 1 1.7.9l.9 1.6H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="11.5" cy="13" r="3.6"/></svg></div>
         <div class="hint-t">Phone → webcam</div>
         <div class="hint-s">Press <b>Start</b> and allow camera access.</div>
+      </div>
+    </div>
+
+    <!-- persistent recovery card: shown when the camera permission was DENIED (Safari never
+         re-prompts once you tap "Don't Allow", so a fading toast isn't enough) -->
+    <div class="hint" id="denied" hidden>
+      <div class="hint-card">
+        <div class="hint-ic bad"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+        <div class="hint-t">Camera blocked</div>
+        <div class="hint-s">Safari is blocking the camera. Tap <b>aA</b> at the top of Safari → <b>Website Settings</b> → <b>Camera</b> → <b>Allow</b>, then press <b>Start</b> again.</div>
       </div>
     </div>
 
@@ -408,7 +434,8 @@ let facing='environment', deviceId=null;     // which camera
 let hideT=0;
 let rot180=false, autoBitrate=false, autostart=false, focusEnabled=false, wantMirror=false;
 let liveT0=0, logT=0, dimT=0;                 // session-start time · toast fade timer · dim clock timer
-let dimTipT=0, zoomChipPrev=null;             // one-shot dim-tip timer · zoom the chip-tap should restore
+let dimTipT=0, stopHintT=0, zoomChipPrev=null; // one-shot dim-tip/stop-hint timers · zoom the chip-tap restores
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)');
 // ---- dynamic lens (iOS-style): the zoom factor picks the physical lens, digital crop fills the gaps ----
 let backLenses=[], curBase=1, absZoom=1, autoLens=true;
 const ULTRA_BASE=0.5, WIDE_BASE=1, TELE_BASE=2;   // ultra-wide + wide are fixed; telephoto varies by model
@@ -936,12 +963,27 @@ async function acquireWakeLock(){
     if(wakeLock) wakeLock.onrelease=()=>{ wakeLock=null; };
   }catch{ wakeLock=null; }
 }
+// persistent "camera blocked" recovery card: Safari never re-prompts after a "Don't Allow",
+// so a fading toast strands a first-timer — keep instructions on screen until the next start
+function showDenied(on){
+  const d=$('#denied'); if(!d) return;
+  if(on){ d.hidden=false; hint.hidden=true; }
+  else { d.hidden=true; if(!running) hint.hidden=false; }
+}
 async function start(){
   if(!navigator.mediaDevices?.getUserMedia){ log('No camera access (HTTPS required).'); setState('error','bad'); return; }
   zoom=1; absZoom=1; curBase=1; zoomChipPrev=null; syncZoomUI();
   setState('camera…','wait');
   try{ camStream=await getStream(); }
-  catch(e){ log('Camera error: '+e.message+' — accept the certificate and the permission.'); setState('no camera','bad'); return; }
+  catch(e){
+    if(e && (e.name==='NotAllowedError' || /denied|permission/i.test(e.message||''))){
+      showDenied(true); setState('camera blocked','bad');   // persistent card, not a fading toast
+    }else{
+      log('Camera error: '+e.message+' — accept the certificate and the permission.'); setState('no camera','bad');
+    }
+    return;
+  }
+  showDenied(false);                     // got the camera -> clear any prior "blocked" card
   camTrack=camStream.getVideoTracks()[0]; wireCamTrack(camTrack);
   preview.srcObject=camStream; try{ await preview.play(); }catch{}
   hint.hidden=true; running=true; liveT0=Date.now();
@@ -958,6 +1000,13 @@ async function start(){
   poke();
   try{ if(!localStorage.getItem('phonecam.gh')){ localStorage.setItem('phonecam.gh','1');
     log('Pinch to zoom · double-tap flips camera · hold to mirror', 6500); } }catch{}
+  // point out the small corner Stop the first time it appears (own key so users predating it get it),
+  // delayed so it doesn't collide with the gesture hint above
+  clearTimeout(stopHintT);
+  stopHintT=setTimeout(()=>{ if(!running) return;
+    try{ if(!localStorage.getItem('phonecam.stophint')){ localStorage.setItem('phonecam.stophint','1');
+      log('Tap the ■ in the top-left corner to stop', 4500); } }catch{}
+  }, 7500);
   // a single contextual nudge after a while, since dim mode is easy to miss
   clearTimeout(dimTipT);
   dimTipT=setTimeout(()=>{ if(!running || !dimEl.hidden) return;   // hidden behind the dim overlay -> don't burn the one-shot
@@ -1026,7 +1075,7 @@ function updateAggState(){
 
 async function stop(){
   running=false; clearTimeout(camRetryTimer); camRetryDelay=800;   // a stale recovery must never race the next start()
-  clearTimeout(dimTipT); zoomChipPrev=null;
+  clearTimeout(dimTipT); clearTimeout(stopHintT); zoomChipPrev=null; showDenied(false);
   toggleBtn.classList.remove('hide'); stopBtn.classList.remove('show'); ui.classList.remove('live');
   snapBtn.hidden=true; dimBtn.hidden=true; reloadBtn.hidden=false; dimOff(); liveT0=0;
   torchBtn.hidden=true; torchBtn.classList.remove('on');
@@ -1106,7 +1155,8 @@ function disableLevel(){ if(orientHandler){ window.removeEventListener('deviceor
 levelBtn.onclick=()=>{ poke(); levelOn=!levelOn; levelBtn.classList.toggle('on',levelOn); levelOn?enableLevel():disableLevel(); };
 
 // ---- snapshot (from the current frame, downloaded to the phone) ----
-function shutterFlash(){ flashEl.style.transition='none'; flashEl.style.opacity='0.8';
+function shutterFlash(){ if(reduceMotion.matches) return;   // no full-screen flash for reduced-motion users
+  flashEl.style.transition='none'; flashEl.style.opacity='0.8';
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     flashEl.style.transition='opacity .35s'; flashEl.style.opacity='0'; })); }
 function snapshot(){
@@ -1255,7 +1305,7 @@ zoomVal.addEventListener('click',()=>{ if(!running) return; poke();
 // quality caption under the dock (idle only — the live badge shows the same thing while streaming)
 function updateDockCap(){ if(!dockCap) return;
   dockCap.hidden = running;
-  dockCap.textContent = `${RES_LBL[RES[resIdx]]} · ${FPS[fpsIdx]} fps · ${(bitrateKbps/1000).toFixed(0)} Mbps`; }
+  dockCap.textContent = `${RES_LBL[RES[resIdx]]} · ${FPS[fpsIdx]} fps · ${(bitrateKbps/1000).toFixed(0)} Mbps  ⚙`; }
 dockCap.addEventListener('click',()=>{ if(!running) openSheet(); });   // tap the caption -> open Settings
 
 // ---- controls: zoom + lens are always visible; the rest lives in the collapsible "More" sheet ----
