@@ -181,9 +181,10 @@
   /* lens pills live in a vertical column on the right edge, just left of the zoom slider */
   .lensdock{position:absolute;top:46%;transform:translateY(-50%);z-index:31;display:flex;
     right:calc(env(safe-area-inset-right,0px) + 72px)}
-  .lensrow{display:flex;flex-direction:column;gap:8px;align-items:stretch;
-    max-height:64vh;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  .lensrow::-webkit-scrollbar{display:none}
+  /* NO overflow/scroll container here: on iOS WebKit, backdrop-filter children inside an
+     overflow-scroll box get their blur rasterised against the CONTAINER's rectangle -> a visible
+     "square" behind the glass pills. There are only ever ~4 lens pills, so no scroll is needed. */
+  .lensrow{display:flex;flex-direction:column;gap:8px;align-items:stretch;max-height:none}
   .lens{flex:0 0 auto;padding:8px 14px;border-radius:999px;font-weight:650;font-size:13px;text-align:center;
     background:var(--lg-fill),rgba(6,9,14,.5);backdrop-filter:var(--lg-blur);border:1px solid var(--glass-line);color:var(--txt);
     transition:background .18s,border-color .18s,color .18s,transform .1s}
