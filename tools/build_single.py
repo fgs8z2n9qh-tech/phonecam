@@ -16,7 +16,7 @@ age_h = (time.time() - os.path.getmtime(ZIP)) / 3600
 if age_h > 24:
     sys.exit("ABORT: PhoneCam-Portable.zip is %.0f hours old — rebuild it first." % age_h)
 
-version = "1.9+" + datetime.datetime.now().strftime("%Y%m%d%H%M")
+version = "2.0+" + datetime.datetime.now().strftime("%Y%m%d%H%M")
 src = open(CS, encoding="utf-8").read().replace("__VERSION__", version)
 tmp_cs = os.path.join(ROOT, "SingleExe.stamped.cs")
 open(tmp_cs, "w", encoding="utf-8").write(src)
