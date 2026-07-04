@@ -1,4 +1,4 @@
-# Create a desktop shortcut for the PhoneCam app (starts with no console window).
+# Create a desktop shortcut for the Focal app (starts with no console window).
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pyw = Join-Path $here ".venv\Scripts\pythonw.exe"
@@ -7,7 +7,7 @@ $icon = Join-Path $here "assets\icon.ico"
 $runPs = Join-Path $here "run_app.ps1"
 
 $desktop = [Environment]::GetFolderPath("Desktop")
-$lnk = Join-Path $desktop "PhoneCam.lnk"
+$lnk = Join-Path $desktop "Focal.lnk"
 
 $ws = New-Object -ComObject WScript.Shell
 $sc = $ws.CreateShortcut($lnk)
@@ -22,7 +22,7 @@ if (Test-Path $pyw) {
 }
 $sc.WorkingDirectory = $here
 if (Test-Path $icon) { $sc.IconLocation = $icon }
-$sc.Description = "PhoneCam - phone as a wireless webcam"
+$sc.Description = "Focal - phone as a wireless webcam"
 $sc.Save()
 Write-Host "Shortcut created:" -ForegroundColor Green
 Write-Host "  $lnk"

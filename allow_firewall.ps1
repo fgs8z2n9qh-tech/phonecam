@@ -1,4 +1,4 @@
-# PhoneCam - open the Windows firewall for ports 8080 (cert) and 8443 (camera).
+# Focal - open the Windows firewall for ports 8080 (cert) and 8443 (camera).
 # This is the only way the phone can reach the PC on the LAN. Needs admin rights -> the script restarts itself.
 $ErrorActionPreference = "Stop"
 
@@ -10,7 +10,7 @@ if (-not $admin) {
     return
 }
 
-$name = "PhoneCam (8080,8443)"
+$name = "Focal (8080,8443)"
 # delete the old rule if it existed (idempotent)
 Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 

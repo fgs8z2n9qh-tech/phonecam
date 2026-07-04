@@ -1,4 +1,4 @@
-# PhoneCam - start the standalone GUI app (no console window).
+# Focal - start the standalone GUI app (no console window).
 # On first run: venv + dependencies + certificate.
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -22,5 +22,5 @@ if (-not (Test-Path (Join-Path $here "server\cert.pem"))) {
     & $py (Join-Path $here "server\make_cert.py")
 }
 
-Write-Host "Starting PhoneCam app..." -ForegroundColor Green
+Write-Host "Starting Focal app..." -ForegroundColor Green
 Start-Process -FilePath $pyw -ArgumentList (Join-Path $here "app.py") -WorkingDirectory $here

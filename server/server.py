@@ -188,6 +188,13 @@ class VCamSink:
             self.cam = None
 
 
+def _convert_frame(frame, nw, nh):
+    """YUV->RGB24 reformat+scale -> a self-owning ndarray (safe to hand back across the executor).
+    swscale releases the GIL, so running this on a worker thread genuinely overlaps with the loop
+    instead of blocking it, freeing the event loop to service RTP/RTCP."""
+    return frame.reformat(width=nw, height=nh, format="rgb24").to_ndarray()
+
+
 async def consume_video(track, sink, loop, hooks=None):
     """Places incoming frames onto the vcam's fixed canvas with the CORRECT ASPECT RATIO
     (letterbox/pillarbox) -> a portrait image is NOT stretched, it gets black bars."""
@@ -219,7 +226,11 @@ async def consume_video(track, sink, loop, hooks=None):
             scale = min(W / w, H / h)                       # fit inward, keep aspect ratio
             nw = max(2, min(W, (int(round(w * scale)) // 2) * 2))   # even size for swscale
             nh = max(2, min(H, (int(round(h * scale)) // 2) * 2))
-            small = frame.reformat(width=nw, height=nh, format="rgb24").to_ndarray()
+            # offload the YUV->RGB24 swscale convert+scale to a worker thread (it releases the GIL),
+            # so the event loop stays free to service RTP/RTCP instead of blocking ~1-6 ms/frame here.
+            # NOTE: the shared letterbox canvas write below stays on the loop and remains serialized
+            # against the in-flight send via `await pending` — only this pure convert is offloaded.
+            small = await loop.run_in_executor(None, _convert_frame, frame, nw, nh)
             if nw == W and nh == H:
                 # frame fills the vcam exactly (the common case — the vcam was auto-sized to this
                 # stream) -> send it directly, skipping a full-frame copy onto the canvas
@@ -420,7 +431,7 @@ async def ice_config(request):
 
 
 _MANIFEST = {
-    "name": "PhoneCam", "short_name": "PhoneCam", "display": "standalone",
+    "name": "Focal", "short_name": "Focal", "display": "standalone",
     "orientation": "any", "background_color": "#0e1116", "theme_color": "#0e1116",
     "scope": "/",
 }
@@ -490,7 +501,7 @@ CA_DER = os.path.join(HERE, "phonecam-ca.cer")
 CERT_PAGE = """<!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name=theme-color content="#0e1116">
-<title>PhoneCam - Setup</title>
+<title>Focal - Setup</title>
 <style>
 :root{--bg:#0e1116;--card:#161b22;--line:#222b36;--txt:#e6edf3;--mut:#8b97a6;--acc:#3fb950;--acc2:#2ea043;--warn:#d29922}
 *{box-sizing:border-box}
@@ -516,7 +527,7 @@ a.btn{display:block;text-align:center;text-decoration:none;font-weight:700;font-
 .hint{color:var(--mut);font-size:12.5px;text-align:center;margin-top:14px}
 code{background:#0b0e13;border:1px solid var(--line);padding:2px 6px;border-radius:6px;word-break:break-all;font-size:12.5px}
 </style></head><body><div class=wrap>
-<h1>&#128241; PhoneCam - Setup</h1>
+<h1>&#128247; Focal - Setup</h1>
 <p class=sub>Install the certificate once, then open the camera. Takes about a minute.</p>
 
 <div class="status wait" id=st>
@@ -781,7 +792,7 @@ async def serve(args, ssl_ctx, ip, hooks=None, stop_event=None):
         hooks.on_ready(info)
     else:
         print("\n" + "=" * 60)
-        print("  PhoneCam server running")
+        print("  Focal server running")
         if info["cert_url"]:
             print(f"  [iPhone, once] Install certificate:    {info['cert_url']}")
         print(f"  [Camera]       Open on your phone:      {info['cam_url']}")
@@ -833,7 +844,7 @@ def make_args(port=8443, http_port=8080, backend="unitycapture",
 
 
 def main():
-    ap = argparse.ArgumentParser(description="PhoneCam server")
+    ap = argparse.ArgumentParser(description="Focal server")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8443)
     ap.add_argument("--http-port", type=int, default=8080)

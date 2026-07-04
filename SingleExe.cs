@@ -1,12 +1,12 @@
-// PhoneCam single-file edition.
+// Focal single-file edition.
 // Carries the whole portable folder as an embedded zip. First run (or a new version)
-// unpacks it to %LOCALAPPDATA%\PhoneCam with a progress bar, then hands off to the inner
-// PhoneCam.exe launcher; later runs skip straight to launch. Files the app creates next to
+// unpacks it to %LOCALAPPDATA%\Focal with a progress bar, then hands off to the inner
+// Focal.exe launcher; later runs skip straight to launch. Files the app creates next to
 // itself (generated certificates) are NOT in the payload, so upgrades never wipe them —
 // the iPhone keeps trusting the same CA.
 //
 // Build (tools/build_single.py stamps __VERSION__ and embeds the zip):
-//   csc /target:winexe /win32icon:assets\icon.ico /res:PhoneCam-Portable.zip,payload.zip
+//   csc /target:winexe /win32icon:assets\icon.ico /res:Focal-Portable.zip,payload.zip
 //       /r:System.IO.Compression.dll /r:System.Windows.Forms.dll SingleExe.cs
 using System;
 using System.Diagnostics;
@@ -18,15 +18,15 @@ using System.Windows.Forms;
 static class Program
 {
     const string Version = "__VERSION__";        // stamped by the build script
-    const string Prefix = "PhoneCam-Portable/";  // top-level folder inside the payload zip
+    const string Prefix = "Focal-Portable/";  // top-level folder inside the payload zip
 
     [STAThread]
     static int Main(string[] args)
     {
         string root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PhoneCam");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Focal");
         string stamp = Path.Combine(root, "version.txt");
-        string inner = Path.Combine(root, "PhoneCam.exe");
+        string inner = Path.Combine(root, "Focal.exe");
         bool extractOnly = Array.IndexOf(args, "--extract-only") >= 0;
 
         bool need = !File.Exists(inner) || !File.Exists(stamp)
@@ -40,9 +40,9 @@ static class Program
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Could not unpack PhoneCam:\r\n" + ex.Message +
-                    "\r\n\r\nIf PhoneCam is already running, close it and try again.",
-                    "PhoneCam", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Could not unpack Focal:\r\n" + ex.Message +
+                    "\r\n\r\nIf Focal is already running, close it and try again.",
+                    "Focal", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 1;
             }
         }
@@ -61,7 +61,7 @@ static class Program
         {
             var form = new Form
             {
-                Text = "PhoneCam — unpacking (first run only)…",
+                Text = "Focal — unpacking (first run only)…",
                 Width = 430, Height = 120, FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false, MinimizeBox = false,
                 StartPosition = FormStartPosition.CenterScreen, TopMost = true

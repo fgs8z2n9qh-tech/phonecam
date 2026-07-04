@@ -1,22 +1,22 @@
-"""Build PhoneCam-SingleFile.exe: the SingleExe.cs stub with PhoneCam-Portable.zip embedded.
+"""Build Focal-SingleFile.exe: the SingleExe.cs stub with Focal-Portable.zip embedded.
 Run scratchpad's build_zip.py (or any fresh zip build) first — this script refuses a stale zip.
 """
 import os, subprocess, sys, time, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ZIP = os.path.join(ROOT, "PhoneCam-Portable.zip")
+ZIP = os.path.join(ROOT, "Focal-Portable.zip")
 CS = os.path.join(ROOT, "SingleExe.cs")
-OUT = os.path.join(ROOT, "PhoneCam-SingleFile.exe")
+OUT = os.path.join(ROOT, "Focal-SingleFile.exe")
 ICON = os.path.join(ROOT, "assets", "icon.ico")
 CSC = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 
 if not os.path.exists(ZIP):
-    sys.exit("ABORT: PhoneCam-Portable.zip not found — build the zip first.")
+    sys.exit("ABORT: Focal-Portable.zip not found — build the zip first.")
 age_h = (time.time() - os.path.getmtime(ZIP)) / 3600
 if age_h > 24:
-    sys.exit("ABORT: PhoneCam-Portable.zip is %.0f hours old — rebuild it first." % age_h)
+    sys.exit("ABORT: Focal-Portable.zip is %.0f hours old — rebuild it first." % age_h)
 
-version = "2.0+" + datetime.datetime.now().strftime("%Y%m%d%H%M")
+version = "2.1+" + datetime.datetime.now().strftime("%Y%m%d%H%M")
 src = open(CS, encoding="utf-8").read().replace("__VERSION__", version)
 tmp_cs = os.path.join(ROOT, "SingleExe.stamped.cs")
 open(tmp_cs, "w", encoding="utf-8").write(src)

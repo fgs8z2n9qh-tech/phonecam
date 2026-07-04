@@ -1,6 +1,6 @@
-// PhoneCam portable launcher (WinExe, no console window).
+// Focal portable launcher (WinExe, no console window).
 // Runs the bundled Python GUI from the exe's own folder; generates the local
-// HTTPS certificate on first run. Mirrors Start-PhoneCam.bat.
+// HTTPS certificate on first run. Mirrors Start-Focal.bat.
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -21,7 +21,7 @@ static class Launcher
         if (!File.Exists(pyw) || !File.Exists(app))
         {
             MessageBox.Show("Bundled Python not found.\nRe-extract the whole ZIP, then try again.",
-                "PhoneCam", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                "Focal", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
         try
@@ -46,8 +46,8 @@ static class Launcher
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Could not start PhoneCam:\n" + ex.Message,
-                "PhoneCam", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show("Could not start Focal:\n" + ex.Message,
+                "Focal", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

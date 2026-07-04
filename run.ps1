@@ -1,4 +1,4 @@
-# PhoneCam - setup + start
+# Focal - setup + start
 # Usage:  right-click > Run with PowerShell,  or:  powershell -ExecutionPolicy Bypass -File run.ps1
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path

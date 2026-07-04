@@ -23,8 +23,8 @@ __pycache__/
 # ── Build artifacts ────────────────────────────────────────────────
 # Portable edition ships its own embedded Python (~600 MB) + a copy of
 # the app. It is a release asset, not source — build it locally.
-PhoneCam-Portable/
-PhoneCam-Portable.zip
+Focal-Portable/
+Focal-Portable.zip
 *.zip
 
 # Compiled launcher (rebuild from Launcher.cs)
@@ -43,5 +43,9 @@ Thumbs.db
 desktop.ini
 
 # build outputs
-PhoneCam-SingleFile.exe
+Focal-SingleFile.exe
 SingleExe.stamped.cs
+
+# icon generator preview output + pre-Focal backup (local only)
+assets/icon_preview_*.png
+assets/icon_phonecam_backup.ico

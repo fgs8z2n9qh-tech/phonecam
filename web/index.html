@@ -7,10 +7,10 @@
 <!-- PWA: "Add to Home Screen" -> full screen without the Safari frame, more stable wake-lock -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="PhoneCam">
+<meta name="apple-mobile-web-app-title" content="Focal">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
-<title>PhoneCam</title>
+<title>Focal</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#161b22; --line:#222b36; --txt:#e6edf3; --muted:#8b97a6;
@@ -594,23 +594,19 @@ function startCanvas(){
   canvasStream=canvas.captureStream(FPS[fpsIdx]);
   canvasTrack=canvasStream.getVideoTracks()[0];
   try{ canvasTrack.contentHint='detail'; }catch{}   // webcam = mostly static -> encoder favors sharpness
-  drawLoop();
+  startDrawLoop();
 }
 function stopCanvas(){
   usingCanvas=false;
-  if(rafId) cancelAnimationFrame(rafId), rafId=0;
+  stopDrawLoop();
   if(canvasStream) canvasStream.getTracks().forEach(t=>t.stop());
   canvasStream=canvasTrack=null; srcVideo.srcObject=null;
 }
 function filtersActive(){ return Math.abs(adjBright-1)>0.001 || Math.abs(adjContrast-1)>0.001 ||
   Math.abs(adjSat-1)>0.001 || Math.abs(adjWarmth)>0.001; }
-let lastDraw=0;
-function drawLoop(){
-  if(!usingCanvas) return;
-  rafId=requestAnimationFrame(drawLoop);              // keep the loop alive every vsync...
-  const now=performance.now(), interval=1000/FPS[fpsIdx];
-  if(now-lastDraw < interval-1) return;               // ...but only do the heavy draw at target fps
-  lastDraw=now;                                        // (120Hz ProMotion would otherwise draw 2-4x too often)
+const _hasRVFC = typeof HTMLVideoElement!=='undefined' && 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+let lastDraw=0, rvfcId=0, rvfcWatch=0, rvfcFrames=0;
+function drawFrame(){                                   // one canvas draw from the CURRENT source frame
   const vw=srcVideo.videoWidth, vh=srcVideo.videoHeight;
   if(vw&&vh){
     // size the canvas to the ACTUAL video frame (orientation-correct). getSettings() can report
@@ -639,6 +635,50 @@ function drawLoop(){
       }
     }catch{}
   }
+}
+// requestVideoFrameCallback fires EXACTLY once per decoded camera frame -> draw 1:1 with the camera
+// instead of redrawing the same frame 2-4x on a 120Hz ProMotion panel (saves phone CPU/battery, no
+// duplicate drawImage/filter work). rAF is the fallback for browsers without rVFC (iOS Safari 15.4+).
+function _rvfcLoop(){
+  if(!usingCanvas) return;
+  rvfcFrames++;                                        // the browser presented a NEW decoded frame
+  rvfcId=srcVideo.requestVideoFrameCallback(_rvfcLoop);
+  drawFrame();
+}
+function _rafLoop(){
+  if(!usingCanvas) return;
+  rafId=requestAnimationFrame(_rafLoop);
+  const now=performance.now(), interval=1000/FPS[fpsIdx];
+  if(now-lastDraw < interval-1) return;               // 120Hz would otherwise draw 2-4x too often
+  lastDraw=now; drawFrame();
+}
+function _reprimeRVFC(){                                // re-issue the callback against the CURRENT srcObject
+  if(!_hasRVFC || !usingCanvas) return;                // (used after a seamless lens swap + by the watchdog)
+  if(rvfcId){ try{ srcVideo.cancelVideoFrameCallback(rvfcId); }catch{} }
+  rvfcId=srcVideo.requestVideoFrameCallback(_rvfcLoop);
+}
+function startDrawLoop(){
+  if(!_hasRVFC){ _rafLoop(); return; }
+  rvfcFrames=0; _rvfcLoop();
+  // rVFC is SOURCE-driven; the old rAF path was DISPLAY-driven and self-healed on any source stall.
+  // Restore that: if presented frames dry up (source stall, or a seamless lens swap whose outstanding
+  // callback doesn't resume on iOS) re-prime the callback; if it still won't revive, fall back to the
+  // always-on rAF loop. Liveness = rvfcFrames advancing (only the browser bumps it — a re-prime doesn't).
+  clearInterval(rvfcWatch);
+  let seen=rvfcFrames, misses=0;
+  rvfcWatch=setInterval(()=>{
+    if(!usingCanvas){ clearInterval(rvfcWatch); rvfcWatch=0; return; }
+    if(rvfcFrames!==seen){ seen=rvfcFrames; misses=0; return; }   // frames still flowing -> healthy
+    if(++misses<=3){ _reprimeRVFC(); }                            // stalled -> try to revive rVFC in place
+    else{ clearInterval(rvfcWatch); rvfcWatch=0;                  // still dead -> rAF (display-driven, self-heals)
+          if(rvfcId){ try{ srcVideo.cancelVideoFrameCallback(rvfcId); }catch{} rvfcId=0; }
+          _rafLoop(); }
+  }, 500);
+}
+function stopDrawLoop(){
+  clearInterval(rvfcWatch); rvfcWatch=0;
+  if(rafId){ cancelAnimationFrame(rafId); rafId=0; }
+  if(rvfcId){ try{ srcVideo.cancelVideoFrameCallback(rvfcId); }catch{} rvfcId=0; }
 }
 // the canvas is used if zoom, rotation, image adjustments OR detail zoom are active. Detail zoom
 // forces the canvas even at 1× so the hi-res sensor feed is downscaled to the chosen output size
@@ -707,6 +747,7 @@ async function switchLensSeamless(L, abs){
     if(!running){ fresh.getTracks().forEach(t=>t.stop()); return false; }   // stopped mid-switch -> don't resurrect
     camStream=fresh; camTrack=fresh.getVideoTracks()[0]; wireCamTrack(camTrack);
     srcVideo.srcObject=camStream; srcVideo.play().catch(()=>{});   // canvasTrack + sender stay put -> no black
+    _reprimeRVFC();                                   // rVFC is source-driven: re-issue the callback for the new lens
     zoom=Math.max(1, abs/curBase);                    // only NOW flip the crop: srcVideo carries the new lens, so
                                                       // the held old-lens frame kept its own framing (no pop)
     await applySenderParams(); showBadge(); buildControls();

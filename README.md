@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📱➜🎥 PhoneCam
+# 📱➜🎥 Focal
 
 **Turn your iPhone into a wireless webcam for your PC — over Wi‑Fi, nothing to install on the phone.**
 
@@ -13,7 +13,7 @@ Just open a link in Safari — no phone app, no cable, no account.
 
 ## Why
 
-Your phone has a far better camera than most laptop or USB webcams. PhoneCam streams it to your PC
+Your phone has a far better camera than most laptop or USB webcams. Focal streams it to your PC
 over your home Wi‑Fi and shows the live picture in a small desktop app. Optionally, it feeds that
 picture into a **virtual camera** so any app — Discord, Zoom, Teams, OBS — can use it.
 
@@ -28,10 +28,10 @@ picture into a **virtual camera** so any app — Discord, Zoom, Teams, OBS — c
 ## Quick start (portable — recommended)
 
 1. Download from the [latest release](../../releases/latest) — either flavour:
-   - **`PhoneCam-SingleFile.exe`** — one file, nothing to unzip. The first run unpacks itself to
-     `%LOCALAPPDATA%\PhoneCam` (progress bar, ~20 s); every later run starts instantly.
-   - **`PhoneCam-Portable.zip`** — the same app as a folder; unzip it anywhere.
-2. Double‑click **`PhoneCam-SingleFile.exe`** (or **`PhoneCam.exe`** inside the unzipped folder).
+   - **`Focal-SingleFile.exe`** — one file, nothing to unzip. The first run unpacks itself to
+     `%LOCALAPPDATA%\Focal` (progress bar, ~20 s); every later run starts instantly.
+   - **`Focal-Portable.zip`** — the same app as a folder; unzip it anywhere.
+2. Double‑click **`Focal-SingleFile.exe`** (or **`Focal.exe`** inside the unzipped folder).
    The window opens with a **QR code** and two web addresses.
    - If Windows shows a blue *"Windows protected your PC"* box: **More info → Run anyway** (it's unsigned, not harmful).
 3. **Allow the firewall** (first time only). When Windows pops up the Defender Firewall dialog,
@@ -44,7 +44,7 @@ picture into a **virtual camera** so any app — Discord, Zoom, Teams, OBS — c
    - **Settings → General → About → Certificate Trust Settings** → turn **ON** "PhoneCam Local CA".
      *(This switch is required on iOS.)*
 5. **On the iPhone — start the camera.** In Safari, **scan the QR code** (or open the `https://…:8443/`
-   address) → press **Start** → allow the camera. The live picture appears in the PhoneCam window. ✅
+   address) → press **Start** → allow the camera. The live picture appears in the Focal window. ✅
 
 > **Same Wi‑Fi network** on phone and PC is required (STUN/TURN‑free, direct LAN connection).
 
@@ -52,14 +52,14 @@ picture into a **virtual camera** so any app — Discord, Zoom, Teams, OBS — c
 
 ## Use it in Discord / Zoom / Teams (optional)
 
-Watching the picture in the PhoneCam window needs nothing extra. To feed it into a call you need a
+Watching the picture in the Focal window needs nothing extra. To feed it into a call you need a
 **virtual camera**:
 
 - **Built‑in (no OBS):** run `install_unitycapture.ps1` **once as Administrator** to register the
-  [Unity Capture](https://github.com/schellingb/UnityCapture) virtual camera. PhoneCam then pipes the
+  [Unity Capture](https://github.com/schellingb/UnityCapture) virtual camera. Focal then pipes the
   phone's video straight into it — pick **"Unity Video Capture"** as the camera in Discord/Zoom.
 - **OBS route:** install OBS Studio, enable *Tools → WebSocket Server Settings* once, then click the
-  **OBS** button in the PhoneCam window — it creates the browser source and starts the OBS Virtual
+  **OBS** button in the Focal window — it creates the browser source and starts the OBS Virtual
   Camera automatically. Pick **"OBS Virtual Camera"** in your call.
 
 Only **video** is sent — keep using your normal microphone.
@@ -85,7 +85,7 @@ The phone page is a full‑screen preview with a pull‑up control layer:
 📱 iPhone Safari (getUserMedia + WebRTC)
         │  Wi‑Fi / LAN
         ▼
-🖥️  PhoneCam (Python aiohttp) — signaling relay only, multi‑viewer
+🖥️  Focal (Python aiohttp) — signaling relay only, multi‑viewer
         ├─►  App preview  (embedded browser, hardware decode → smooth fps)
         └─►  Virtual‑camera bridge  →  Unity Capture / OBS  →  🎮 Discord / Zoom / Teams
 ```
@@ -96,7 +96,7 @@ internal bridge additionally decodes one copy of the stream to feed the DirectSh
 Discord sees exactly what your phone sends.
 
 **Why the certificate?** Browsers only hand out the camera over a secure (HTTPS) context. On a LAN
-there's no public CA, so PhoneCam generates its own **local CA + leaf certificate** at first run
+there's no public CA, so Focal generates its own **local CA + leaf certificate** at first run
 (`server/make_cert.py`) and you trust it once on the phone. The CA private key never leaves your PC
 and is **never committed to this repo** (see [Security](#security)).
 
@@ -138,9 +138,9 @@ Ports: **8080** (HTTP — certificate download) and **8443** (HTTPS — camera p
 |---|---|
 | Phone says *"server cannot be found"* | Firewall (step 3), or phone/PC are on different Wi‑Fi networks. |
 | Safari won't turn on the camera | The certificate isn't trusted yet — the *Certificate Trust Settings* switch (step 4). |
-| App shows a white / blank window | An old copy is still running. Close all PhoneCam windows and relaunch (a single‑instance guard prevents port clashes). |
+| App shows a white / blank window | An old copy is still running. Close all Focal windows and relaunch (a single‑instance guard prevents port clashes). |
 | Discord shows a green/garbled image | Make sure a virtual camera is installed (Unity Capture or OBS) and selected; restart Discord after installing it. |
-| App won't open at all | Run `Start-PhoneCam (debug).bat` (portable) to see the error. |
+| App won't open at all | Run `Start-Focal (debug).bat` (portable) to see the error. |
 
 ---
 

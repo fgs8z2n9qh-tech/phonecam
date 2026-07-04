@@ -218,7 +218,7 @@ class _SettingsDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PhoneCam — receiver")
+        self.setWindowTitle("Focal — receiver")
         self.resize(1000, 680)
         self.worker = None
         self._info = {}
@@ -389,7 +389,7 @@ class MainWindow(QMainWindow):
         """The QR code, the numbered setup steps, the backend selector and the setup tools —
         everything not needed while the webcam is simply running."""
         dlg = self.dlg = _SettingsDialog(self)
-        dlg.setWindowTitle("PhoneCam — setup & tools")
+        dlg.setWindowTitle("Focal — setup & tools")
         dlg.setModal(False)
         dlg.setMinimumWidth(392)
         sl = QVBoxLayout(dlg)
@@ -785,7 +785,7 @@ class MainWindow(QMainWindow):
             self.on_log(reason)
             low = reason.lower()
             if ("10048" in reason) or ("only one usage" in low) or ("bind" in low and "address" in low):
-                self.on_log("→ Port 8443/8080 is busy — another PhoneCam is already running. "
+                self.on_log("→ Port 8443/8080 is busy — another Focal is already running. "
                             "Close the other window (or end the leftover 'pythonw' in Task Manager), then press Start.")
                 if not self._viewer_loaded:
                     self.preview.setHtml(_PREVIEW_PORT_BUSY)
@@ -840,7 +840,7 @@ _PREVIEW_PORT_BUSY = (
     "font-family:Segoe UI,sans-serif'><div style='max-width:420px;padding:24px'>"
     "<div style='font-size:34px'>&#9888;&#65039;</div>"
     "<div style='font-size:17px;font-weight:700;margin:10px 0 6px'>Port already in use</div>"
-    "<div style='font-size:13px;color:#8b97a6;line-height:1.5'>Another PhoneCam is already running and "
+    "<div style='font-size:13px;color:#8b97a6;line-height:1.5'>Another Focal is already running and "
     "holding port 8443/8080. Close the other window, then press <b style='color:#3fb950'>Start</b>."
     "</div></div></body></html>"
 )
@@ -872,8 +872,8 @@ def main():
     app.setFont(QFont("Segoe UI", 10))
     if not _acquire_single_instance():                     # only ONE PhoneCam at a time
         from PySide6.QtWidgets import QMessageBox
-        box = QMessageBox(QMessageBox.Information, "PhoneCam",
-            "PhoneCam is already running.\n\nUse the window that's already open. If you can't find it, "
+        box = QMessageBox(QMessageBox.Information, "Focal",
+            "Focal is already running.\n\nUse the window that's already open. If you can't find it, "
             "an old copy may be stuck — open Task Manager, end the 'pythonw.exe' process, then start again.")
         box.setWindowFlag(Qt.WindowStaysOnTopHint, True)   # don't hide behind other windows (pythonw)
         box.exec()
